@@ -11,6 +11,9 @@ from ..model_comparison import ModelComparator
 from ..injection_retrieval import TransitInjector
 from ..utils import load_catalogue
 from ..config import get_default_config, merge_config
+import os
+import matplotlib.pyplot as plt
+import numpy as np
 
 logger = logging.getLogger('mono_cbp.pipeline')
 
@@ -38,7 +41,7 @@ class MonoCBPPipeline:
 
     def __init__(self, catalogue_path, data_dir='./data', output_dir='./results',
                  sector_times_path='../../catalogue/sector_times.csv', TEBC=False, transit_models_path=None, config=None):
-        """Initialize the MonoCBPPipeline.
+        """Initialise MonoCBPPipeline.
 
         Args:
             catalogue_path (str): Path to catalogue CSV file containing EB properties.
@@ -46,8 +49,9 @@ class MonoCBPPipeline:
                 sec_pos, sec_width.
             data_dir (str, optional): Directory containing light curve files. Defaults to './data'.
             output_dir (str, optional): Directory for output files. Defaults to './results'.
-            sector_times_path (str, optional): Path to sector times CSV for Skye metric
-            transit_models_path (str, optional): Path to transit models for injection-retrieval
+            sector_times_path (str, optional): Path to sector times CSV for Skye metric. Defaults to '../../catalogue/sector_times.csv'.
+            TEBC (bool, optional): Whether the catalogue is the TESS EB Catalogue. Defaults to False.
+            transit_models_path (str, optional): Path to transit models for injection-retrieval. If None, injection-retrieval is disabled. Defaults to None.
             config (dict, optional): Configuration dictionary. Uses defaults if None.
         """
         self.data_dir = data_dir
@@ -62,9 +66,9 @@ class MonoCBPPipeline:
 
         # Load catalogue
         self.catalogue = load_catalogue(catalogue_path, TEBC=TEBC)
-        logger.info(f"Initialized pipeline with {len(self.catalogue)} targets")
+        logger.info(f"Initialised pipeline with {len(self.catalogue)} targets")
 
-        # Initialize components
+        # Initialise components
         self.eclipse_masker = EclipseMasker(self.catalogue, data_dir=data_dir)
 
         self.transit_finder = TransitFinder(
@@ -88,33 +92,23 @@ class MonoCBPPipeline:
 
         self.results = {}
 
-    def run(self, find_transits=True, vet_candidates=True,
+    def run(self, vet_candidates=True,
             injection_retrieval=False, **kwargs):
         """Run the complete pipeline.
 
-        Eclipse masking is always performed before transit finding to ensure
-        eclipses are properly excluded from the transit search.
+        Note that eclipse masking and transit finding are always performed.
 
         Args:
-            find_transits (bool, optional): Run transit finding. Defaults to True.
             vet_candidates (bool, optional): Run model comparison vetting. Defaults to True.
             injection_retrieval (bool, optional): Run injection-retrieval. Defaults to False.
             **kwargs: Additional keyword arguments passed to individual steps:
-                - mask_eclipses_kwargs: Arguments for eclipse masking (e.g., force=True)
+                - mask_eclipses_kwargs: Arguments for eclipse masking
                 - find_transits_kwargs: Arguments for transit finding
                 - vet_candidates_kwargs: Arguments for vetting
                 - injection_retrieval_kwargs: Arguments for injection-retrieval
 
         Returns:
             dict: Dictionary containing results from each pipeline step
-
-        Example:
-            >>> results = pipeline.run(
-            ...     find_transits=True,
-            ...     vet_candidates=True,
-            ...     mask_eclipses_kwargs={'force': True},
-            ...     find_transits_kwargs={'plot_output_dir': './plots'}
-            ... )
         """
         logger.info("Starting mono-cbp pipeline")
 
@@ -123,15 +117,14 @@ class MonoCBPPipeline:
         self.mask_eclipses(**kwargs.get('mask_eclipses_kwargs', {}))
 
         # Step 2: Transit finding
-        if find_transits:
-            logger.info("Step 2: Transit finding")
-            transit_results = self.find_transits(**kwargs.get('find_transits_kwargs', {}))
-            self.results['transit_finding'] = transit_results
+        logger.info("Step 2: Transit finding")
+        transit_results = self.find_transits(**kwargs.get('find_transits_kwargs', {}))
+        self.results['transit_finding'] = transit_results
 
         # Step 3: Model comparison vetting
-        if vet_candidates and find_transits:
+        if vet_candidates:
             logger.info("Step 3: Model comparison vetting")
-            # Get event snippets from transit finder if available
+            # Get event snippets from transit_finder if available
             event_snippets = self.transit_finder.results.get('event_snippets', [])
 
             # Prepare vetting kwargs
@@ -220,9 +213,8 @@ class MonoCBPPipeline:
                 output_dir=output_dir
             )
         else:
-            # Fall back to file-based processing
+            # File-based processing
             if event_snippets_dir is None:
-                import os
                 event_snippets_dir = os.path.join(self.output_dir, 'event_snippets')
 
             logger.info(f"Vetting candidates from {event_snippets_dir}")
@@ -235,36 +227,65 @@ class MonoCBPPipeline:
         logger.info(f"Model comparison complete: {len(results)} events vetted")
         return results
 
-    def run_injection_retrieval(self, n_injections=None, output_file='injection_results.csv',
-                               output_dir=None):
-        """Run injection-retrieval testing for all transit models.
+    def run_injection_retrieval(self, n_injections=None, output_file='inj-ret_results.csv',
+                               output_dir=None, plot_completeness=False,
+                               completeness_kwargs=None):
+        """Run injection-retrieval testing.
 
-        Tests each transit model in transit_models.npz by injecting it into n_injections
-        randomly selected light curves. The total number of tests will be
+        Tests each transit model in transit_models.npz by injecting n_injections of
+        each model into randomly selected light curves. The total number of tests will be
         n_injections * number_of_models.
 
         Args:
             n_injections (int, optional): Number of injection-retrieval tests to perform
                 per transit model. If there are fewer files than requested injections,
                 files will be randomly sampled with replacement. Defaults to config value.
-            output_file (str, optional): Output filename. Defaults to 'injection_results.csv'.
-            output_dir (str, optional): Output directory. Defaults to data_dir.
+            output_file (str, optional): Output filename. Defaults to 'inj-ret_results.csv'.
+            output_dir (str, optional): Output directory. Defaults to pipeline's output_dir.
+            plot_completeness (bool, optional): Whether to generate completeness plot.
+                Defaults to False.
+            completeness_kwargs (dict, optional): Keyword arguments to pass to
+                TransitInjector.plot_completeness(). Common options:
+                - figsize (tuple): Figure size. Defaults to (5, 4).
+                - cmap (str): Colormap name. Defaults to 'viridis'.
+                - save_fig (bool): Whether to save figure. Defaults to False.
+                - output_path (str): Path to save figure. Defaults to 'completeness.png'.
+                - dpi (int): DPI for saved figure. Defaults to 300.
 
         Returns:
             pd.DataFrame: Injection-retrieval results with one row per injection test
+
+        Raises:
+            ValueError: If transit injector is not initialised
         """
         if self.transit_injector is None:
-            raise ValueError("Transit injector not initialized - provide transit_models_path")
-        
+            raise ValueError("Transit injector not initialised - provide transit_models_path")
+
+        if output_dir is None:
+            output_dir = self.output_dir
+
         n_injections = self.config['injection_retrieval']['n_injections'] if n_injections is None else n_injections
 
         results = self.transit_injector.run_injection_retrieval(
             self.data_dir,
             n_injections=n_injections,
             output_file=output_file,
-            output_dir=output_dir or self.data_dir
+            output_dir=output_dir
         )
         logger.info(f"Injection-retrieval complete")
+
+        # Generate completeness plot if requested
+        if plot_completeness:
+            logger.info("Generating completeness plot")
+            completeness_kwargs = completeness_kwargs or {}
+
+            # Set default output path to output_dir if not specified
+            if 'output_path' not in completeness_kwargs:
+                completeness_kwargs['output_path'] = os.path.join(output_dir, 'completeness.png')
+
+            self.transit_injector.plot_completeness(**completeness_kwargs)
+            logger.info(f"Completeness plot saved")
+
         return results
 
     def plot_bin_phase_fold(self, tic_id, save_fig=False, save_path='.'):
@@ -272,8 +293,8 @@ class MonoCBPPipeline:
 
         Args:
             tic_id (int): TIC ID to plot
-            save_fig (bool, optional): Save figure. Defaults to False.
-            save_path (str, optional): Save directory. Defaults to '.'.
+            save_fig (bool, optional): Whether to save figure. Defaults to False.
+            save_path (str, optional): Save directory. Defaults to current working directory ('.').
 
         Returns:
             matplotlib.figure.Figure: Figure object
@@ -291,27 +312,13 @@ class MonoCBPPipeline:
             event_number (int, optional): Specific event number to plot (1-indexed).
                                          If None, plots all events for this TIC. Defaults to None.
             save_fig (bool, optional): Whether to save the figure. Defaults to False.
-            save_path (str, optional): Directory to save figure. Defaults to '.'.
+            save_path (str, optional): Directory to save figure. Defaults to current working directory ('.').
             figsize (tuple, optional): Figure size (width, height). Defaults to (12, 4) per event.
 
-        Returns:
-            None
-
         Raises:
-            ValueError: If no events found for the given TIC ID or event number
+            ValueError: If no events found for the given TIC ID and/or event number
             RuntimeError: If transit finding has not been run yet
-
-        Example:
-            >>> # Plot all events for TIC 260128333
-            >>> pipeline.plot_events(260128333)
-            >>>
-            >>> # Plot only the first event
-            >>> pipeline.plot_events(260128333, event_number=1)
         """
-        import matplotlib.pyplot as plt
-        import numpy as np
-        import os
-
         # Check if transit finding has been run
         if not hasattr(self.transit_finder, 'results') or len(self.transit_finder.results.get('tics', [])) == 0:
             raise RuntimeError("No transit events found. Run pipeline.find_transits() or pipeline.run() first.")
@@ -373,11 +380,16 @@ class MonoCBPPipeline:
             ax.errorbar(time, flux, yerr=flux_err, fmt='o', color='navy',
                        alpha=0.6, markersize=4, capsize=0)
 
-            # Highlight the event region
+            # Highlight the event region with vertical dotted lines at start and end
             event_start = event_time - event_width / 2
             event_end = event_time + event_width / 2
-            ax.axvspan(event_start, event_end, alpha=0.2, color='red')
-            ax.axvline(event_time, color='red', linestyle='--', alpha=0.7, linewidth=1.5)
+            ax.axvline(event_start, color='red', linestyle=':', alpha=0.7, linewidth=1.5)
+            ax.axvline(event_end, color='red', linestyle=':', alpha=0.7, linewidth=1.5)
+
+            # Add caret marker at the bottom to indicate event center
+            y_min = np.min(flux) - 0.3 * (np.max(flux) - np.min(flux))
+            ax.plot(event_time, y_min, marker='^', color='red', markersize=10,
+                   markeredgecolor='red', markerfacecolor='red', clip_on=False, zorder=10)
 
             # Add horizontal line at flux=1
             ax.axhline(1.0, color='gray', linestyle=':', alpha=0.5, linewidth=1)
@@ -389,14 +401,14 @@ class MonoCBPPipeline:
             # Create title with event info
             event_num = event_idx - event_indices[0] + 1 if event_number is None else event_number
             title = (f'TIC {tic_id} - Event {event_num} (Sector {sector})\n'
-                    f'Depth: {depth:.4f} | Duration: {duration:.3f} d | SNR: {snr:.1f} | Phase: {phase:.3f}')
+                    f'Depth: {depth * 100:.2f}% | Duration: {duration:.2f} d | SNR: {snr:.1f} | Phase: {phase:.2f}')
             ax.set_title(title, fontsize=12, fontweight='bold')
 
             ax.grid(True, alpha=0.3, linestyle='--')
 
             # Set y-axis limits with some padding
             flux_range = np.max(flux) - np.min(flux)
-            ax.set_ylim(np.min(flux) - 0.1 * flux_range, np.max(flux) + 0.1 * flux_range)
+            ax.set_ylim(np.min(flux) - 0.4 * flux_range, np.max(flux) + 0.4 * flux_range)
 
         if save_fig:
             if event_number is not None:

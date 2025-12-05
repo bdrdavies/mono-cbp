@@ -90,7 +90,7 @@ class ModelComparator:
             sector = event_input.get('sector', 'unknown')
             event_no = event_input.get('event_no', 0)
             filename = f"TIC_{tic}_{sector}_{event_no}"
-            logger.info(f"Processing {tic} Sector {sector} Event {event_no}")
+            logger.info(f"Processing TIC {tic} Sector {sector} Event {event_no}")
         else:
             raise TypeError("event_input must be either a file path (str) or event data (dict)")
 
