@@ -1,4 +1,4 @@
-"""Functions for generating vetting plots."""
+"""Functions for generating plots."""
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -65,7 +65,7 @@ def plot_no_events(
         axs[1].fill_between(time, 0, 1, where=ecl_mask, color='grey', alpha=0.7, transform=axs[1].get_xaxis_transform())
 
     # Plot the detrending without plotting it over any gaps in the data
-    threshold = 0.5  # adjust as needed
+    threshold = 0.5
     dt = np.diff(time[mask])
     split_indices = np.where(dt > threshold)[0] + 1
     segments = np.split(np.arange(len(time[mask])), split_indices)
@@ -141,7 +141,7 @@ def plot_event(
         end_time (float): End time of the event
         phase (float): Binary phase of the event
         SNR (float): Signal-to-noise ratio of the event
-        peaks (array_like): Array of detected peaks
+        peaks (array_like): Array of detected peak indices
         event_no (int): Event number
         ecl_mask (array_like, optional): Eclipse mask array. Defaults to None.
         output_dir (str, optional): Output directory. Defaults to None.
@@ -204,7 +204,7 @@ def plot_event(
         axs[2].fill_between(time, 0, 1, where=ecl_mask, color='grey', alpha=0.7, transform=axs[2].get_xaxis_transform())
 
     # Plot the detrending without plotting it over any gaps in the data
-    threshold = 0.5  # adjust as needed
+    threshold = 0.5
     dt = np.diff(time[mask])
     split_indices = np.where(dt > threshold)[0] + 1
     segments = np.split(np.arange(len(time[mask])), split_indices)

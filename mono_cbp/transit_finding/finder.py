@@ -462,7 +462,7 @@ class TransitFinder:
         time_sorted_idx = np.argsort([e['time'] for e in event_data_all])
         event_data_sorted = [event_data_all[i] for i in time_sorted_idx]
 
-        events_grouped = list(split_tol(all_peaks_flat_sorted, EVENT_GROUPING_TOLERANCE))
+        events_grouped = split_tol(all_peaks_flat_sorted, EVENT_GROUPING_TOLERANCE)
 
         # Select highest SNR event from each group
         # NOTE: All events are saved, filtering can be done later with filter_events()
@@ -706,7 +706,7 @@ class TransitFinder:
 
             # Calculate Skye threshold
             event_times_sorted = np.sort(sector_event_times)
-            event_times_grouped = list(split_tol(event_times_sorted, 0.1))
+            event_times_grouped = split_tol(event_times_sorted, 0.1)
             counts = np.array([len(g) for g in event_times_grouped])
 
             # Pad counts with zeros to match expected bin count for standard deviation calculation

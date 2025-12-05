@@ -14,7 +14,9 @@ logger = logging.getLogger('mono_cbp.utils.detrending')
 
 @contextmanager
 def suppress_stdout():
-    """Context manager to suppress stdout temporarily."""
+    """Context manager to suppress stdout temporarily.
+       This is used to suppress output from the iterative cosine detrending.
+    """
     with open(os.devnull, 'w') as devnull:
         old_stdout = sys.stdout
         sys.stdout = devnull
@@ -27,7 +29,8 @@ def suppress_stdout():
 def poly_normalise(time, flux, order=2):
     """Normalises the flux using a polynomial fit.
 
-    Used for reducing the half-sector periodicity from TESS data.
+    Used for reducing the half-sector periodicity from
+    TESS data before calculating the Lomb-Scargle periodogram.
 
     Args:
         time (array_like): Array of time values
@@ -75,13 +78,15 @@ def poly_normalise_gaps(time, flux, gap_size, order=2):
 def calculate_LSP(time, flux, flux_err):
     """Calculates the Lomb-Scargle periodogram.
 
+    The frequency range is set to search for periods between 2 and 27 days.
+
     Args:
         time (array_like): Array of time values
         flux (array_like): Array of flux values
         flux_err (array_like): Array of flux error values
 
     Returns:
-        tuple: A tuple containing the Lomb-Scargle object, frequency array, and power spectrum
+        tuple: A tuple containing the LombScargle object, frequency array, and power spectrum
     """
     nan_mask = ~np.isnan(flux * time * flux_err)
 
@@ -141,20 +146,23 @@ def cosine_detrend(time, flux, flux_err, win_len_max=12, win_len_min=1, threshol
 
     Returns:
         tuple or np.ndarray: Detrended light curve and fitted trend (if successful), or just detrended flux
+
+    Raises:
+        ValueError: If maximum window length is smaller than minimum window length
     """
     # Check that the input window lengths are sensible
     if win_len_max <= win_len_min:
         raise ValueError("Maximum window length must be greater than minimum window length.")
 
     # If the periodicity is longer than a TESS sector or if there is no significant periodicity
-    # Fit polynomial (accounting for gaps) and re-calculate LSP
+    # Fit polynomial (accounting for gaps of size > 1 day) and re-calculate LSP
     if get_period_max_power(time, flux, flux_err) > 27 or get_fap(time, flux, flux_err) > threshold:
 
         logger.debug('Fitting polynomial to remove trend before L-S periodogram...')
 
         flux_poly = poly_normalise_gaps(time, flux, 1, order=poly_order)
 
-        # If no significant periodicity, return the original flux
+        # If still no significant periodicity, return the original flux
         if get_period_max_power(time, flux_poly, flux_err) > 27 or get_fap(time, flux_poly, flux_err) > threshold:
             return flux
 
@@ -227,6 +235,9 @@ def run_multi_biweight(time, flux, max_win_len=3, min_win_len=1, edge_cutoff=0):
 
     Returns:
         tuple: Detrended light curves, fitted trends, and window length grid
+
+    Raises:
+        ValueError: If window length inputs are invalid
     """
     # Check that the input window lengths are sensible
     if ((max_win_len * 10) % 1 != 0) or ((min_win_len * 10) % 1 != 0):
@@ -270,7 +281,7 @@ def detrend(
         bi_win_len_max=3,
         bi_win_len_min=1
 ):
-    """Detrend a TESS light curve using different methods.
+    """Detrend a TESS EB light curve using different methods.
 
     Method 1: Iterative cosine + multi-biweight detrending
     Method 2: Iterative cosine + penalised spline detrending
@@ -281,15 +292,15 @@ def detrend(
         flux_err (array_like): Array of flux error values
         method (str): Detrending method to use ('cp' or 'cb')
         fname (str): Filename to print to user output
-        cos_win_len_max (int, optional): Maximum window length for cosine detrending. Defaults to 12.
-        cos_win_len_min (int, optional): Minimum window length for cosine detrending. Defaults to 1.
+        cos_win_len_max (int, optional): Maximum window length for cosine detrending in days. Defaults to 12.
+        cos_win_len_min (int, optional): Minimum window length for cosine detrending in days. Defaults to 1.
         fap_threshold (float, optional): False alarm probability threshold. Defaults to 1e-2.
         poly_order (int, optional): Polynomial order for trend fitting. Defaults to 2.
         mask (list, optional): Boolean mask for data points to exclude from the fitting. Defaults to [].
-        edge_cutoff (int, optional): Defines the amount of data at the edges to exclude (in units of time). Defaults to 0.
+        edge_cutoff (int, optional): Defines the amount of data at the edges to exclude in days. Defaults to 0.
         max_splines (int, optional): Maximum number of splines for penalised spline fitting. Defaults to 25.
-        bi_win_len_max (int, optional): Maximum window length for biweight detrending. Defaults to 3.
-        bi_win_len_min (int, optional): Minimum window length for biweight detrending. Defaults to 1.
+        bi_win_len_max (int, optional): Maximum window length for biweight detrending in days. Defaults to 3.
+        bi_win_len_min (int, optional): Minimum window length for biweight detrending in days. Defaults to 1.
 
     Returns:
         tuple: Detrended light curve, fitted trend, biweight window lengths (if applicable), and number of cosine detrending successes

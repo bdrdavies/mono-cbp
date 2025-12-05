@@ -1,4 +1,4 @@
-"""Collection of functions to find threshold crossing events.
+"""Collection of functions to find threshold crossing events (TCEs).
 
 Contains monofind and its associated helper functions.
 """
@@ -12,7 +12,7 @@ def get_gaps_indices(time, break_tolerance):
 
     Args:
         time (array_like): Array of time values
-        break_tolerance (float): Threshold for the gap distance
+        break_tolerance (float): Threshold for the gap distance in days
 
     Returns:
         np.ndarray: Indices on the time axis where gaps occur
@@ -33,18 +33,20 @@ def split_tol(test_list, tol):
         test_list (list): List to split
         tol (int): Threshold tolerance
 
-    Yields:
+    Returns:
         list: List containing split lists
     """
+    result = []
     res = []
     start = test_list[0]
     for ele in test_list:
         if ele - start > tol:
-            yield res
+            result.append(res)
             res = []
             start = ele
         res.append(ele)
-    yield res
+    result.append(res)
+    return result
 
 
 def create_mad_indices(time, npoints):
@@ -239,7 +241,7 @@ def monofind(time, flux, mad=3., var_mad=None):
     Returns:
         tuple: Arrays of detected event indices and metadata dictionary
     """
-    # Initialize metadata dictionary
+    # Initialise metadata dictionary
     meta = {'threshold': [], 'depths': [], 'widths': [], 'start_times': [], 'end_times': []}
     # Calculate detection threshold
     threshold, meta_threshold = calculate_threshold(flux, mad, var_mad)

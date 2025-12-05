@@ -339,9 +339,9 @@ def catalogue_to_lc_files(cat, output_path='../data'):
         for sector in sectors:
             sector = int(sector)
             # Check if a file already exists for this TIC ID and sector in the output directory
-            existing_files = [f for f in os.listdir(output_path) if f.endswith('.txt') and f.split('_')[1] == str(tic_id) and f.split('_')[2] == f"S{sector}"]
+            existing_files = [f for f in os.listdir(output_path) if f.endswith('.txt') and f.split('_')[1] == str(tic_id) and f.split('_')[2].replace('.txt', '') == f"{sector:02d}"]
             if existing_files:
-                logger.info(f"TIC_{tic_id}_S{sector}.txt already exists in {output_path}. Skipping download.")
+                logger.info(f"TIC_{tic_id}_{sector:02d}.txt already exists in {output_path}. Skipping download.")
                 continue
             try:
                 search = lk.search_lightcurve(f"TIC {tic_id}", mission="TESS", sector=sector, author="TESS-SPOC")
@@ -363,9 +363,9 @@ def catalogue_to_lc_files(cat, output_path='../data'):
             for sector in sectors:
                 sector = int(sector)
                 # Check if a file already exists for this TIC ID and sector in the output directory
-                existing_files = [f for f in os.listdir(output_path) if f.endswith('.txt') and f.split('_')[1] == str(tic_id) and f.split('_')[2] == f"S{sector}"]
+                existing_files = [f for f in os.listdir(output_path) if f.endswith('.txt') and f.split('_')[1] == str(tic_id) and f.split('_')[2].replace('.txt', '') == f"{sector:02d}"]
                 if existing_files:
-                    logger.info(f"TIC_{tic_id}_S{sector}.txt already exists in {output_path}. Skipping download.")
+                    logger.info(f"TIC_{tic_id}_{sector:02d}.txt already exists in {output_path}. Skipping download.")
                     continue
                 try:
                     search = lk.search_lightcurve(f"TIC {tic_id}", mission="TESS", sector=sector, author="TESS-SPOC")
