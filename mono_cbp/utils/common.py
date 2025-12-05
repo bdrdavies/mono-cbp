@@ -8,7 +8,7 @@ def setup_logging(level=logging.INFO, log_file=None):
     """Set up logging for mono-cbp.
 
     Args:
-        level (int, optional): Logging level. Defaults to logging.INFO.
+        level (int, optional): Logging level. Defaults to logging.INFO (20).
         log_file (str, optional): Path to log file. If None, logs to console only.
 
     Returns:
@@ -41,12 +41,12 @@ def setup_logging(level=logging.INFO, log_file=None):
 
 
 def get_snr(depth, error, duration, cadence=30):
-    """Calculate signal-to-noise ratio for a transit event.
+    """Calculate signal-to-noise ratio for a threshold crossing event (TCE).
 
     Args:
-        depth (float): Transit depth
-        error (float): Combined measurement uncertainty
-        duration (float): Transit duration in days
+        depth (float): TCE depth
+        error (float): Combined measurement uncertainty (see documentation for details)
+        duration (float): TCE duration in days
         cadence (int, optional): Cadence in minutes. Defaults to 30.
 
     Returns:

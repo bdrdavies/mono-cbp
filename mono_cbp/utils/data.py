@@ -35,8 +35,7 @@ def choose_eclipse_params(row, max_eclipse_width=0.2):
     """Select eclipse parameters using only 2g (Double Gaussian) values.
 
     This function only uses 2g values for eclipse parameter selection, ignoring
-    all polyfit (pf) values. This is used for testing against a previous version
-    of the code that only supported 2g values.
+    all polyfit (pf) values.
 
     Args:
         row (pd.Series): Row from the catalogue
@@ -133,7 +132,7 @@ def load_catalogue(path, TEBC=False):
         - tess_id: TIC IDs of the targets
         - period: Orbital period of the targets
         - bjd0: Reference epoch for binary ephemerides
-        - sectors: TESS Sectors that the targets were observed in
+        - sectors: TESS sectors that the targets were observed in
         - prim_pos: Primary eclipse position (orbital phase)
         - prim_width: Primary eclipse width (orbital phase)
         - sec_pos: Secondary eclipse position (orbital phase)
@@ -141,7 +140,7 @@ def load_catalogue(path, TEBC=False):
 
     Args:
         path (str): Path to the catalogue file (.csv or .txt).
-        TEBC (bool): If True, use TEBC double Gaussian/polyfit logic. Requires
+        TEBC (bool, optional): If True, use TEBC double Gaussian/polyfit logic. Requires
             additional columns: prim_pos_2g, prim_pos_pf, prim_width_2g, prim_width_pf,
             sec_pos_2g, sec_pos_pf, sec_width_2g, sec_width_pf. Default: False.
 
@@ -170,7 +169,7 @@ def load_catalogue(path, TEBC=False):
         'prim_pos', 'prim_width', 'sec_pos', 'sec_width'
     ]
 
-    # If TEBC format, create eclipse columns from 2g/pf variants using multi-level fallback
+    # If TEBC format, create eclipse width/position columns from 2g/pf values
     if TEBC:
         eclipse_params = catalogue.apply(choose_eclipse_params, axis=1)
         catalogue['prim_pos'] = eclipse_params.apply(lambda x: x['prim_pos'])
@@ -188,7 +187,7 @@ def load_catalogue(path, TEBC=False):
 
 
 def get_row(catalogue, tic_id):
-    """Get the row corresponding to a specific TIC ID.
+    """Get the row in a catalogue DataFrame corresponding to a specific TIC ID.
 
     Args:
         catalogue (pd.DataFrame or pd.Series): Catalogue data
@@ -234,7 +233,7 @@ def bin_to_long_cadence(time, flux, flux_err):
     return time, flux, flux_err
 
 
-def to_plain(arr):
+def _to_plain(arr):
     """Convert MaskedNDArray to plain ndarray with NaNs for masked values.
 
     Args:
@@ -246,8 +245,8 @@ def to_plain(arr):
     return arr.filled(np.nan) if hasattr(arr, "filled") else np.asarray(arr)
 
 
-def lc_to_txt(cat, lc, output_path='./data'):
-    """Saves a lightkurve LightCurve object to a text file.
+def lc_to_txt(cat, lc, output_path='../data'):
+    """Saves a lightkurve LightCurve object to a text file in the standard mono-cbp format.
 
     Args:
         cat (pd.DataFrame or pd.Series): Catalogue data containing period and bjd0
@@ -257,7 +256,7 @@ def lc_to_txt(cat, lc, output_path='./data'):
     # Create filename
     tic_id = lc.meta.get("TARGETID", "unknown")
     sector = lc.meta.get("SECTOR", "unknown")
-    filename = f"TIC_{tic_id}_S{sector}.txt"
+    filename = f"TIC_{tic_id}_{sector:02d}.txt"
     output_file = os.path.join(output_path, filename)
 
     # If output file already exists, skip saving
@@ -313,22 +312,22 @@ def lc_to_txt(cat, lc, output_path='./data'):
     np.savetxt(
         output_file,
         np.column_stack([
-            to_plain(time.astype(float)),
-            to_plain(flux.astype(float)),
-            to_plain(flux_err.astype(float)),
-            to_plain(phase.astype(float))
+            _to_plain(time.astype(float)),
+            _to_plain(flux.astype(float)),
+            _to_plain(flux_err.astype(float)),
+            _to_plain(phase.astype(float))
         ]),
         header="TIME FLUX FLUX_ERR PHASE ECL_MASK",
     )
     logger.info(f"Saved light curve data to {output_file}")
 
 
-def catalogue_to_lc_files(cat, output_path='./data'):
-    """Creates light curve files for each TIC ID in the catalogue.
+def catalogue_to_lc_files(cat, output_path='../data'):
+    """Creates light curve files for each TIC ID in the catalogue in the standard mono-cbp format.
 
     Args:
         cat (pd.DataFrame or pd.Series): The catalogue data
-        output_path (str): The directory to save the downloaded lc.fits files
+        output_path (str, optional): The directory to save the downloaded lc.fits files. Defaults to './data'.
     """
     if not os.path.exists(output_path):
         os.makedirs(output_path)
