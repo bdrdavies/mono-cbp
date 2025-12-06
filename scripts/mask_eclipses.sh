@@ -6,8 +6,9 @@
 # Usage: ./mask_eclipses.sh [catalogue] [data_dir]
 #
 
-CATALOGUE="${1:-catalogues/TEBC_morph_05_P_7.csv}"
+CATALOGUE="${1:-catalogues/TEBC_morph_05_P_7_ADJUSTED.csv}"
 DATA_DIR="${2:-data}"
+CONFIG_FILE="mono_cbp/config_example.json"
 
 echo "=========================================="
 echo "Eclipse Masking"
@@ -28,11 +29,19 @@ if [ ! -d "$DATA_DIR" ]; then
     exit 1
 fi
 
+# Build command
+CMD="mono-cbp mask-eclipses \
+    --catalogue $CATALOGUE \
+    --data-dir $DATA_DIR \
+    --tebc"
+
+# Add optional config
+if [ -f "$CONFIG_FILE" ]; then
+    CMD="$CMD --config $CONFIG_FILE"
+fi
+
 # Run masking (modifies files in-place)
-mono-cbp mask-eclipses \
-    --catalogue "$CATALOGUE" \
-    --data-dir "$DATA_DIR" \
-    --tebc
+$CMD
 
 if [ $? -eq 0 ]; then
     echo

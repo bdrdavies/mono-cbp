@@ -5,21 +5,15 @@
 # Usage: ./inject_retrieve.sh [data_dir] [output_file]
 #
 
-DATA_DIR="${1:-data/lightcurves/masked}"
-MODELS_FILE="data/transit_models.npz"
-ECLIPSE_PARAMS="data/catalogues/eclipse_params.csv"
+DATA_DIR="${1:-data}"
+MODELS_FILE="catalogues/transit_models.npz"
+CATALOGUE="catalogues/TEBC_morph_05_P_7_ADJUSTED.csv"
 OUTPUT_FILE="${2:-results/injection_results.csv}"
-N_INJECTIONS=100
+CONFIG_FILE="mono_cbp/config_example.json"
 
 echo "=========================================="
 echo "Injection-Retrieval Testing"
 echo "=========================================="
-echo "Data directory: $DATA_DIR"
-echo "Transit models: $MODELS_FILE"
-echo "Output file: $OUTPUT_FILE"
-echo "Number of injections: $N_INJECTIONS"
-echo "=========================================="
-echo
 
 # Check files
 if [ ! -d "$DATA_DIR" ]; then
@@ -33,21 +27,29 @@ if [ ! -f "$MODELS_FILE" ]; then
     exit 1
 fi
 
-if [ ! -f "$ECLIPSE_PARAMS" ]; then
-    echo "Error: Eclipse parameters file not found: $ECLIPSE_PARAMS"
+if [ ! -f "$CATALOGUE" ]; then
+    echo "Error: Eclipse parameters file not found: $CATALOGUE"
     exit 1
 fi
 
 # Create output directory
 mkdir -p "$(dirname $OUTPUT_FILE)"
 
+# Build command
+CMD="mono-cbp inject-retrieve \
+    --models $MODELS_FILE \
+    --data-dir $DATA_DIR \
+    --catalogue $CATALOGUE \
+    --output $OUTPUT_FILE \
+    --tebc"
+
+# Add optional config
+if [ -f "$CONFIG_FILE" ]; then
+    CMD="$CMD --config $CONFIG_FILE"
+fi
+
 # Run injection-retrieval
-mono-cbp inject-retrieve \
-    --models "$MODELS_FILE" \
-    --data-dir "$DATA_DIR" \
-    --eclipse-params "$ECLIPSE_PARAMS" \
-    --output "$OUTPUT_FILE" \
-    --n-injections "$N_INJECTIONS"
+$CMD
 
 if [ $? -eq 0 ]; then
     echo
@@ -55,15 +57,6 @@ if [ $? -eq 0 ]; then
     echo "Injection-retrieval complete!"
     echo "Results saved to: $OUTPUT_FILE"
     echo "=========================================="
-
-    # Calculate recovery rate
-    if [ -f "$OUTPUT_FILE" ]; then
-        N_TOTAL=$(tail -n +2 "$OUTPUT_FILE" | wc -l)
-        N_RECOVERED=$(tail -n +2 "$OUTPUT_FILE" | cut -d',' -f7 | grep -c "True")
-        RECOVERY_RATE=$(echo "scale=2; 100 * $N_RECOVERED / $N_TOTAL" | bc)
-        echo
-        echo "Recovery rate: $RECOVERY_RATE% ($N_RECOVERED/$N_TOTAL)"
-    fi
 else
     echo "Error: Injection-retrieval failed"
     exit 1

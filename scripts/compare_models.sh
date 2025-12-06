@@ -7,6 +7,7 @@
 
 EVENT_DIR="${1:-results/event_snippets}"
 OUTPUT_FILE="${2:-results/classifications.csv}"
+CONFIG_FILE="mono_cbp/config_example.json"
 
 echo "=========================================="
 echo "Model Comparison"
@@ -35,10 +36,18 @@ echo
 # Create output directory
 mkdir -p "$(dirname $OUTPUT_FILE)"
 
+# Build command
+CMD="mono-cbp compare-models \
+    --event-dir $EVENT_DIR \
+    --output $OUTPUT_FILE"
+
+# Add optional config
+if [ -f "$CONFIG_FILE" ]; then
+    CMD="$CMD --config $CONFIG_FILE"
+fi
+
 # Run model comparison
-mono-cbp compare-models \
-    --event-dir "$EVENT_DIR" \
-    --output "$OUTPUT_FILE"
+$CMD
 
 if [ $? -eq 0 ]; then
     echo
@@ -47,11 +56,20 @@ if [ $? -eq 0 ]; then
     echo "Classifications saved to: $OUTPUT_FILE"
     echo "=========================================="
 
-    # Summary statistics
+    # Display individual classifications
     if [ -f "$OUTPUT_FILE" ]; then
         echo
         echo "Classification Summary:"
-        tail -n +2 "$OUTPUT_FILE" | cut -d',' -f4 | sort | uniq -c | sort -rn
+        # Extract filename (remove .npz extension) and classification
+        tail -n +2 "$OUTPUT_FILE" | awk -F',' '{
+            gsub(/\.npz$/, "", $1);
+            printf "   %s: %s\n", $1, $2
+        }'
+
+        # Show count summary
+        echo
+        echo "Classification Counts:"
+        tail -n +2 "$OUTPUT_FILE" | cut -d',' -f2 | sort | uniq -c | sort -rn
     fi
 else
     echo "Error: Model comparison failed"

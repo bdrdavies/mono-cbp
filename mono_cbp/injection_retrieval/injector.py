@@ -553,6 +553,16 @@ class TransitInjector:
             pd.DataFrame: Results DataFrame
         """
         df = pd.DataFrame(self.results)
+
+        # Handle case where output_file contains a directory path
+        output_file_dir = os.path.dirname(output_file)
+        if output_file_dir:
+            # output_file contains a directory, use it
+            output_dir = output_file_dir
+            output_file = os.path.basename(output_file)
+
+        # Ensure output directory exists
+        os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, output_file)
         df.to_csv(output_path, index=False)
         logger.info(f"Saved results to {output_path}")
@@ -569,6 +579,16 @@ class TransitInjector:
             pd.DataFrame: Injection-recovery statistics DataFrame
         """
         df = pd.DataFrame(self.stats)
+
+        # Handle case where output_file contains a directory path
+        output_file_dir = os.path.dirname(output_file)
+        if output_file_dir:
+            # output_file contains a directory, use it
+            output_dir = output_file_dir
+            output_file = os.path.basename(output_file)
+
+        # Ensure output directory exists
+        os.makedirs(output_dir, exist_ok=True)
         output_path = os.path.join(output_dir, output_file)
         df.to_csv(output_path, index=False)
         logger.info(f"Saved recovery statistics to {output_path}")

@@ -246,8 +246,16 @@ class ModelComparator:
         if isinstance(events_input, str):
             # Process directory of .npz files
             data_dir = events_input
+            # If output_dir not specified, check if output_file contains a directory path
             if output_dir is None:
-                output_dir = data_dir
+                output_file_dir = os.path.dirname(output_file)
+                if output_file_dir:
+                    # output_file contains a directory, use it
+                    output_dir = output_file_dir
+                    output_file = os.path.basename(output_file)
+                else:
+                    # output_file is just a filename, default to data_dir
+                    output_dir = data_dir
 
             files = [f for f in os.listdir(data_dir) if f.endswith('.npz')]
             logger.info(f"Processing {len(files)} files from {data_dir}")
@@ -268,6 +276,15 @@ class ModelComparator:
             # Process list of in-memory event dictionaries
             logger.info(f"Processing {len(events_input)} events from memory")
 
+            # Handle output_file with directory path
+            if output_dir is None:
+                output_file_dir = os.path.dirname(output_file)
+                if output_file_dir:
+                    output_dir = output_file_dir
+                    output_file = os.path.basename(output_file)
+                else:
+                    output_dir = '.'  # Current directory as default
+
             all_results = []
             for i, event_data in enumerate(events_input):
                 if i % 10 == 0:
@@ -285,6 +302,8 @@ class ModelComparator:
         # Save results
         df = pd.DataFrame(all_results)
         if output_dir:
+            # Ensure output directory exists
+            os.makedirs(output_dir, exist_ok=True)
             output_path = os.path.join(output_dir, output_file)
             df.to_csv(output_path, index=False)
             logger.info(f"Saved results to {output_path}")

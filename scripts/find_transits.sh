@@ -6,13 +6,14 @@
 #
 
 DATA_DIR="${1:-data}"
-ECLIPSE_PARAMS="catalogues/TEBC_morph_05_P_7.csv"
+CATALOGUE="catalogues/TEBC_morph_05_P_7_ADJUSTED.csv"
 SECTOR_TIMES="catalogues/sector_times.csv"
 OUTPUT_FILE="${2:-results/transit_events.txt}"
 PLOT_DIR="results/vetting_plots"
 SNIPPETS_DIR="results/event_snippets"
+CONFIG_FILE="mono_cbp/config_example.json"
 
-# Configuration
+# Configuration (can be overridden by config file)
 MAD_THRESHOLD=3.0
 METHOD="cb"  # cb = cosine+biweight, cp = cosine+pspline
 
@@ -20,7 +21,7 @@ echo "=========================================="
 echo "Transit Finding"
 echo "=========================================="
 echo "Data directory: $DATA_DIR"
-echo "Eclipse params: $ECLIPSE_PARAMS"
+echo "Catalogue: $CATALOGUE"
 echo "Output file: $OUTPUT_FILE"
 echo "MAD threshold: $MAD_THRESHOLD"
 echo "Method: $METHOD"
@@ -33,8 +34,8 @@ if [ ! -d "$DATA_DIR" ]; then
     exit 1
 fi
 
-if [ ! -f "$ECLIPSE_PARAMS" ]; then
-    echo "Error: Eclipse parameters file not found: $ECLIPSE_PARAMS"
+if [ ! -f "$CATALOGUE" ]; then
+    echo "Error: Catalogue file not found: $CATALOGUE"
     exit 1
 fi
 
@@ -45,9 +46,10 @@ mkdir -p "$SNIPPETS_DIR"
 
 # Build command
 CMD="mono-cbp find-transits \
-    --catalogue $ECLIPSE_PARAMS \
+    --catalogue $CATALOGUE \
     --data-dir $DATA_DIR \
     --output $OUTPUT_FILE \
+    --plot-dir $PLOT_DIR \
     --threshold $MAD_THRESHOLD \
     --method $METHOD \
     --tebc"
@@ -55,6 +57,10 @@ CMD="mono-cbp find-transits \
 # Add optional parameters
 if [ -f "$SECTOR_TIMES" ]; then
     CMD="$CMD --sector-times $SECTOR_TIMES"
+fi
+
+if [ -f "$CONFIG_FILE" ]; then
+    CMD="$CMD --config $CONFIG_FILE"
 fi
 
 # Run transit finding

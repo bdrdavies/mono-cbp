@@ -29,6 +29,7 @@ def main():
     mask_parser = subparsers.add_parser('mask-eclipses', help='Mask eclipses only')
     mask_parser.add_argument('--catalogue', required=True, help='Path to catalogue CSV')
     mask_parser.add_argument('--data-dir', required=True, help='Data directory (files modified in-place)')
+    mask_parser.add_argument('--config', help='Path to configuration JSON file')
     mask_parser.add_argument('--tebc', action='store_true', help='Use TEBC catalogue format (with *_2g and *_pf columns)')
 
     # Transit finding
@@ -40,6 +41,7 @@ def main():
     find_parser.add_argument('--plot-dir', help='Directory to save vetting and Skye plots (if enabled in config)')
     find_parser.add_argument('--threshold', type=float, help='MAD threshold')
     find_parser.add_argument('--method', choices=['cb', 'cp'], help='Detrending method')
+    find_parser.add_argument('--config', help='Path to configuration JSON file')
     find_parser.add_argument('--tebc', action='store_true', help='Use TEBC catalogue format (with *_2g and *_pf columns)')
 
     # Model comparison
@@ -47,6 +49,7 @@ def main():
     compare_parser.add_argument('--event-dir', required=True, help='Event snippets directory')
     compare_parser.add_argument('--output', default='classifications.csv', help='Output file')
     compare_parser.add_argument('--output-dir', help='Output directory (defaults to event-dir if not specified)')
+    compare_parser.add_argument('--config', help='Path to configuration JSON file')
 
     # Injection-retrieval
     inject_parser = subparsers.add_parser('inject-retrieve', help='Run injection-retrieval')
@@ -55,7 +58,8 @@ def main():
     inject_parser.add_argument('--catalogue', required=True, help='Path to catalogue CSV with eclipse and orbital parameters')
     inject_parser.add_argument('--output', default='inj-ret_results.csv', help='Output file')
     inject_parser.add_argument('--output-dir', help='Output directory (defaults to data-dir if not specified)')
-    inject_parser.add_argument('--n-injections', type=int, default=100, help='Number of injections')
+    inject_parser.add_argument('--n-injections', type=int, default=None, help='Number of injections per model (defaults to config value)')
+    inject_parser.add_argument('--config', help='Path to configuration JSON file')
     inject_parser.add_argument('--tebc', action='store_true', help='Use TEBC catalogue format (with *_2g and *_pf columns)')
 
     args = parser.parse_args()
@@ -117,11 +121,19 @@ def main():
     elif args.command == 'mask-eclipses':
         from mono_cbp import EclipseMasker
         from mono_cbp.utils import load_catalogue
+        import json
 
         print("\n=== Masking Eclipses ===")
         print(f"Catalogue: {args.catalogue}")
         print(f"Data directory: {args.data_dir}")
         print("Note: Files will be modified in-place\n")
+
+        # Load config from file if provided (for potential future use)
+        config = {}
+        if hasattr(args, 'config') and args.config:
+            print(f"Configuration: {args.config}")
+            with open(args.config) as f:
+                config = json.load(f)
 
         catalogue = load_catalogue(args.catalogue, TEBC=args.tebc if hasattr(args, 'tebc') else False)
         masker = EclipseMasker(catalogue, data_dir=args.data_dir)
@@ -133,6 +145,7 @@ def main():
     elif args.command == 'find-transits':
         from mono_cbp import TransitFinder
         from mono_cbp.utils import load_catalogue
+        import json
 
         print("\n=== Finding Transits ===")
         print(f"Catalogue: {args.catalogue}")
@@ -145,9 +158,18 @@ def main():
         if args.method:
             print(f"Detrending method: {args.method}")
 
+        # Load config from file if provided
         config = {}
+        if hasattr(args, 'config') and args.config:
+            print(f"Configuration: {args.config}")
+            with open(args.config) as f:
+                config = json.load(f)
+
+        # Override config with command-line arguments
         if args.threshold:
-            config['transit_finding'] = {'mad_threshold': args.threshold}
+            if 'transit_finding' not in config:
+                config['transit_finding'] = {}
+            config['transit_finding']['mad_threshold'] = args.threshold
         if args.method:
             if 'transit_finding' not in config:
                 config['transit_finding'] = {}
@@ -170,6 +192,7 @@ def main():
 
     elif args.command == 'compare-models':
         from mono_cbp import ModelComparator
+        import json
 
         print("\n=== Comparing Models for Vetting ===")
         print(f"Event directory: {args.event_dir}")
@@ -179,7 +202,14 @@ def main():
         else:
             print(f"Output directory: {args.event_dir} (default)")
 
-        comparator = ModelComparator()
+        # Load config from file if provided
+        config = {}
+        if hasattr(args, 'config') and args.config:
+            print(f"Configuration: {args.config}")
+            with open(args.config) as f:
+                config = json.load(f)
+
+        comparator = ModelComparator(config=config if config else None)
 
         print("\nStarting model comparison...\n")
         results = comparator.compare_events(
@@ -191,21 +221,36 @@ def main():
 
     elif args.command == 'inject-retrieve':
         from mono_cbp import TransitInjector
+        import json
+
+        # Load config from file if provided
+        config = {}
+        if hasattr(args, 'config') and args.config:
+            print(f"Configuration: {args.config}")
+            with open(args.config) as f:
+                config = json.load(f)
+
+        # Determine n_injections (from args or config)
+        from mono_cbp.config import get_default_config, merge_config
+        merged_config = merge_config(config, get_default_config()) if config else get_default_config()
+        n_injections_display = args.n_injections if args.n_injections is not None else merged_config['injection_retrieval']['n_injections']
 
         print("\n=== Running Injection-Retrieval ===")
         print(f"Transit models: {args.models}")
         print(f"Catalogue: {args.catalogue}")
         print(f"Data directory: {args.data_dir}")
-        print(f"Number of injections per model: {args.n_injections}")
+        print(f"Number of injections per model: {n_injections_display}{' (from config)' if args.n_injections is None else ''}")
         print(f"Output file: {args.output}")
         if hasattr(args, 'output_dir') and args.output_dir:
             print(f"Output directory: {args.output_dir}")
         else:
             print(f"Output directory: {args.data_dir} (default)")
 
+
         injector = TransitInjector(
             transit_models_path=args.models,
             catalogue=args.catalogue,
+            config=config if config else None,
             TEBC=args.tebc if hasattr(args, 'tebc') else False
         )
 
