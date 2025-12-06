@@ -1,0 +1,45 @@
+{
+  "transit_finding": {
+    "edge_cutoff": 0.0,
+    "mad_threshold": 3.0,
+    "detrending_method": "cb",
+    "generate_vetting_plots": true,
+    "generate_skye_plots": true,
+    "generate_event_snippets": true,
+    "save_event_snippets": true,
+    "cadence_minutes": 30,
+    "cosine": {
+      "win_len_max": 12,
+      "win_len_min": 1,
+      "fap_threshold": 0.01,
+      "poly_order": 2
+    },
+    "biweight": {
+      "win_len_max": 3,
+      "win_len_min": 1
+    },
+    "pspline": {
+      "max_splines": 25
+    },
+    "filters": {
+      "min_snr": 5,
+      "max_duration_days": 1,
+      "det_dependence_threshold": 18
+    }
+  },
+  "model_comparison": {
+    "tune": 1000,
+    "draws": 1000,
+    "chains": 4,
+    "cores": 4,
+    "target_accept": 0.99,
+    "sigma_threshold": 3,
+    "aic_threshold": 2,
+    "rmse_threshold": 1.2,
+    "save_plots": true,
+    "plot_dir": "results/model_comparison_plots"
+  },
+  "injection_retrieval": {
+    "n_injections": 2
+  }
+}

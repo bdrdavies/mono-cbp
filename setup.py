@@ -14,7 +14,7 @@ with open(os.path.join(this_directory, 'requirements.txt'), encoding='utf-8') as
 
 # Read version
 version = {}
-with open(os.path.join(this_directory, 'mono_cbp', '__version__.py'), encoding='utf-8') as f:
+with open(os.path.join(this_directory, 'mono_cbp', '__init__.py'), encoding='utf-8') as f:
     exec(f.read(), version)
 
 setup(

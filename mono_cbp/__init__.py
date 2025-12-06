@@ -1,5 +1,5 @@
 """
-mono-cbp: A pipeline for detecting circumbinary planets in TESS light curves.
+mono-cbp: A pipeline for identifying transits of circumbinary planets in TESS light curves.
 
 This package provides tools for:
 - Eclipse masking in eclipsing binary light curves
