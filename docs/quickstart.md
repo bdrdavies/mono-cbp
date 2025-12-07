@@ -171,7 +171,7 @@ pipeline = MonoCBPPipeline(
 
 ## Command-Line Interface
 
-Run from the terminal (if CLI is available):
+Run from the terminal:
 
 ```bash
 # Full pipeline
@@ -190,12 +190,3 @@ mono-cbp find-transits \
     --threshold 4.0 \
     --output transit_events.txt
 ```
-
-**Note:** For detailed configuration options, use Python API or edit configuration files rather than CLI flags.
-
-## Next Steps
-
-- Read the [User Guide](user_guide.md) for detailed explanations
-- Explore the Jupyter notebooks in examples/ for common use cases
-- Check [Configuration](configuration.md) for all available options
-- Review the [API Reference](api_reference.md) for complete documentation
