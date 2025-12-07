@@ -10,7 +10,6 @@ import pandas as pd
 import logging
 import warnings
 import matplotlib.pyplot as plt
-from matplotlib import font_manager
 from matplotlib.patheffects import withStroke
 from ..utils import (
     bin_to_long_cadence, get_var_mad, monofind,

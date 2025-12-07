@@ -38,17 +38,15 @@ pipeline = MonoCBPPipeline(
 ##### `run()`
 ```python
 results = pipeline.run(
-    find_transits: bool = True,
     vet_candidates: bool = True,
     injection_retrieval: bool = False,
     **kwargs
 ) -> dict
 ```
 
-Run the complete pipeline. Eclipse masking is always performed first.
+Run the complete pipeline. Eclipse masking and transit finding are always performed.
 
 **Parameters:**
-- `find_transits` (bool, optional): Run transit finding (default: True)
 - `vet_candidates` (bool, optional): Run model comparison vetting (default: True)
 - `injection_retrieval` (bool, optional): Run injection-retrieval test (default: False)
 - `**kwargs`: Additional arguments passed to pipeline steps:
@@ -58,6 +56,8 @@ Run the complete pipeline. Eclipse masking is always performed first.
   - `injection_retrieval_kwargs`: Arguments for injection-retrieval
 
 **Returns:** Dictionary with results from each pipeline step
+
+**Note:** Eclipse masking and transit finding are mandatory steps that always run. Only vetting and injection-retrieval are optional.
 
 ##### `mask_eclipses()`
 ```python
@@ -107,23 +107,39 @@ Execute model comparison vetting.
 ##### `run_injection_retrieval()`
 ```python
 results = pipeline.run_injection_retrieval(
-    n_injections: int = 100,
-    output_file: str = 'injection_results.csv',
-    output_dir: str = None
+    n_injections: int = None,
+    output_file: str = 'inj-ret_results.csv',
+    output_dir: str = None,
+    plot_completeness: bool = False,
+    completeness_kwargs: dict = None
 ) -> pd.DataFrame
 ```
 
 Run injection-retrieval testing for all transit models in `transit_models.npz`. Tests each transit model by injecting it into `n_injections` randomly selected light curves. The total number of tests will be `n_injections × number_of_models`.
 
 **Parameters:**
-- `n_injections` (int, optional): Number of injection-retrieval tests to perform per transit model. If there are fewer files than requested injections, files will be randomly sampled with replacement (default: 100)
-- `output_file` (str, optional): Output filename for results (default: 'injection_results.csv')
-- `output_dir` (str, optional): Output directory. If None, defaults to data_dir (default: None)
+- `n_injections` (int, optional): Number of injection-retrieval tests to perform per transit model. If there are fewer files than requested injections, files will be randomly sampled with replacement. If None, uses config value (default: None)
+- `output_file` (str, optional): Output filename for results (default: 'inj-ret_results.csv')
+- `output_dir` (str, optional): Output directory. If None, defaults to pipeline's output_dir (default: None)
+- `plot_completeness` (bool, optional): Whether to generate completeness plot (default: False)
+- `completeness_kwargs` (dict, optional): Keyword arguments to pass to `TransitInjector.plot_completeness()`. Common options:
+  - `figsize` (tuple): Figure size (default: (5, 4))
+  - `cmap` (str): Colormap name (default: 'viridis')
+  - `save_fig` (bool): Whether to save figure (default: False)
+  - `output_path` (str): Path to save figure (default: 'completeness.png')
+  - `dpi` (int): DPI for saved figure (default: 300)
 
-**Returns:** DataFrame with injection-retrieval results (one row per injection test)
+**Returns:** DataFrame with injection-retrieval results containing (one row per injection test):
+- TIC ID and sector
+- Injected transit parameters (time, depth, duration, SNR)
+- Recovery status (boolean)
+- Recovered parameters (time, depth, duration, SNR) if detected, NaN otherwise
+
+**Additional Outputs:**
+- `{output_file}_stats.csv`: Per-model recovery statistics automatically saved
 
 **Raises:**
-- `ValueError`: If transit injector not initialized (requires `transit_models_path` in constructor)
+- `ValueError`: If transit injector not initialised (requires `transit_models_path` in constructor)
 
 ##### `plot_bin_phase_fold()`
 ```python
@@ -393,48 +409,7 @@ Filter detected events based on quality criteria. This is a static method that c
 
 **Returns:** Filtered DataFrame containing only events that pass all specified criteria
 
-**Examples:**
-```python
-# Apply standard quality filters
-filtered = TransitFinder.filter_events(events_df, min_snr=5.0, max_duration_days=1.0)
-
-# Filter for high-quality events (not flagged by any metric)
-filtered = TransitFinder.filter_events(
-    events_df,
-    min_snr=5.0,
-    det_dependence_flag=0,  # Robust to detrending
-    skye_flag=0             # Not systematic artifact
-)
-
-# Filter by SNR only
-filtered = TransitFinder.filter_events(events_df, min_snr=7.0)
-
-# Can also call as instance method
-finder = TransitFinder(...)
-filtered = finder.filter_events(events_df, min_snr=5.0)
-```
-
 **Note:** This method does not modify the original DataFrame. Flags are only available if corresponding analysis was performed (e.g., `det_dependence_flag` requires `cb` detrending method, `skye_flag` requires sector times).
-
-**Implementation Notes:**
-
-The TransitFinder class includes several internal constants for configuration:
-- `LONG_CADENCE_THRESHOLD_DAYS` (0.0138889): Threshold for detecting long cadence data (~2 minutes)
-- `CADENCE_MINUTES_TO_DAYS` (1440): Conversion factor from minutes to days
-- `VAR_MAD_WINDOW` (100): Window size for variable median absolute deviation calculation
-- `PROGRESS_INTERVAL` (10): Progress logging interval for file processing
-- `EVENT_WINDOW_HALF_WIDTH` (0.5): Half-width of event window in days for short-duration events
-- `EVENT_GROUPING_TOLERANCE` (10): Cadence-point tolerance for grouping events across detrending window lengths
-- `SKYE_FIGURE_SIZE` ((12, 10)): Figure size for Skye metric histograms
-
-Internal helper methods:
-- `_load_npz()`: Loads light curve data from NPZ format files
-- `_load_txt()`: Loads light curve data from TXT format files
-- `_parse_filename()`: Extracts TIC ID and sector from filename
-- `_get_eclipse_params()`: Retrieves eclipse parameters from catalogue
-- `_extract_event_data()`: Calculates SNR and event metadata
-- `_create_event_snippet()`: Creates time-windowed event data for model comparison
-- `_calculate_skye_metric()`: Calculates systematic artifact flags across sectors
 
 ### Model Comparison
 
@@ -475,49 +450,31 @@ Compare models for a single event using Bayesian model fitting and AIC compariso
 
 **Returns:** Dictionary with classification and model comparison results:
 - `filename` (str): Event filename (for file input) or constructed filename (for dict input)
-- `best_fit` (str): Classification category:
-  - `'T'`: Unambiguous transit (transit model is best fit, RMSE ≈ 1)
-  - `'AT'`: Ambiguous transit (transit model is best fit, RMSE > 1)
-  - `'A'`: Ambiguous (AIC difference < 2 between best models)
-  - `'AN'`: Ambiguous non-transit (transit not best fit, RMSE ≈ 1)
-  - `'N'`: Not a transit (transit not best fit, RMSE > 1)
+- `best_fit` (str): Classification category (based on best AIC model and RMSE):
+  - `'T'`: Transit (transit model best fit, AIC diff ≥ 2, RMSE ≤ threshold)
+  - `'AT'`: Ambiguous transit (transit model best fit, AIC diff ≥ 2, RMSE > threshold)
+  - `'Sin'`: Sinusoid (sinusoid model best fit, AIC diff ≥ 2, RMSE ≤ threshold)
+  - `'ASin'`: Ambiguous sinusoid (sinusoid model best fit, AIC diff ≥ 2, RMSE > threshold)
+  - `'L'`: Linear (linear model best fit, AIC diff ≥ 2, RMSE ≤ threshold)
+  - `'AL'`: Ambiguous linear (linear model best fit, AIC diff ≥ 2, RMSE > threshold)
+  - `'St'`: Step (step model best fit, AIC diff ≥ 2, RMSE ≤ threshold)
+  - `'ASt'`: Ambiguous step (step model best fit, AIC diff ≥ 2, RMSE > threshold)
+  - `'A'`: Ambiguous (AIC difference < 2 from best model to all others)
 - `aic_transit` (float): AIC for transit model
 - `aic_sinusoidal` (float): AIC for sinusoidal model
 - `aic_linear` (float): AIC for linear model
 - `aic_step` (float): AIC for step function model
-- `rmse_transit` (float): Root mean square error for transit model
+- `rmse_transit` (float): RMSE for transit model
 - `rmse_sinusoidal` (float): RMSE for sinusoidal model
 - `rmse_linear` (float): RMSE for linear model
 - `rmse_step` (float): RMSE for step function model
 
 **Model Fitting:**
 This method fits four models to the event data:
-1. **Transit model**: Exoplanet transit using PyMC3/Exoplanet
-2. **Sinusoidal model**: Sinusoidal variation (for eclipsing binary remnants)
+1. **Transit model**: Exoplanet transit using [exoplanet](https://docs.exoplanet.codes/en/latest/)
+2. **Sinusoidal model**: Sinusoidal variation
 3. **Linear model**: Linear trend
-4. **Step function model**: Step function (for systematic artifacts)
-
-**Example:**
-```python
-# From file
-result = comparator.compare_event('event_snippets/TIC_12345_S10_1.npz')
-
-# From memory
-event_data = {
-    'time': time_array,
-    'flux': flux_array,
-    'flux_err': flux_err_array,
-    'event_time': 1234.56,
-    'event_width': 0.1,
-    'tic': 12345,
-    'sector': 10,
-    'event_no': 1
-}
-result = comparator.compare_event(event_data, save_plot=True, plot_dir='./plots')
-
-print(f"Classification: {result['best_fit']}")
-print(f"Transit RMSE: {result['rmse_transit']:.2f}")
-```
+4. **Step function model**: Step function. Performs a 2nd order polynomial fit across the largest flux jump, if the jump is > 3 sigma oulier
 
 ##### `compare_events()`
 ```python
@@ -545,7 +502,7 @@ Compare models for multiple events (batch processing).
 
 **DataFrame Columns:**
 - `filename` (str): Event filename or constructed name
-- `best_fit` (str): Classification (T, AT, A, AN, N)
+- `best_fit` (str): Classification (T, AT, Sin, ASin, L, AL, St, ASt, A)
 - `aic_transit` (float): AIC for transit model
 - `aic_sinusoidal` (float): AIC for sinusoidal model
 - `aic_linear` (float): AIC for linear model
@@ -557,37 +514,9 @@ Compare models for multiple events (batch processing).
 
 **Behavior:**
 - Processes events in batches with progress logging (every 10 events)
-- Handles errors gracefully - failed events are logged and skipped
+- Failed events are logged and skipped
 - Saves results to CSV if `output_dir` is specified
 - Logs classification summary statistics at completion
-
-**Examples:**
-```python
-# Process directory of event snippet files
-results_df = comparator.compare_events(
-    events_input='results/event_snippets',
-    output_file='vetting_results.csv',
-    output_dir='results',
-    save_plots=True,
-    plot_dir='results/model_plots'
-)
-
-# Process in-memory event data (from TransitFinder)
-finder = TransitFinder(...)
-finder.process_directory(...)
-event_snippets = finder.results['event_snippets']
-
-results_df = comparator.compare_events(
-    events_input=event_snippets,
-    output_file='vetting_results.csv',
-    output_dir='results'
-)
-
-# View classification summary
-print(results_df['best_fit'].value_counts())
-```
-
-**Note:** Private methods `_fit_transit_model()`, `_fit_sinusoidal_model()`, `_fit_linear_model()`, and `_fit_step_model()` are used internally for model fitting.
 
 ### Injection-Retrieval
 
@@ -618,7 +547,7 @@ injector = TransitInjector(
 ```python
 results = injector.run_injection_retrieval(
     data_dir: str,
-    n_injections: int = 100,
+    n_injections: int = None,
     output_file: str = 'inj-ret_results.csv',
     output_dir: str = None
 ) -> pd.DataFrame
@@ -628,7 +557,7 @@ Run injection-retrieval tests for all transit models in `transit_models.npz`. Te
 
 **Parameters:**
 - `data_dir` (str): Directory containing light curve files
-- `n_injections` (int, optional): Number of injection-retrieval tests to perform per transit model. If there are fewer files than requested injections, files will be randomly sampled with replacement (default: 100)
+- `n_injections` (int, optional): Number of injection-retrieval tests to perform per transit model. If there are fewer files than requested injections, files will be randomly sampled with replacement (default: None)
 - `output_file` (str, optional): Output filename (default: 'inj-ret_results.csv')
 - `output_dir` (str, optional): Output directory. If None, defaults to data_dir (default: None)
 
@@ -640,7 +569,6 @@ Run injection-retrieval tests for all transit models in `transit_models.npz`. Te
 
 **Behavior:**
 - Light curves are inverted to ensure detected events are injected transits, not real signals
-- Gaps in light curves are temporarily filled to allow injections across gaps
 - Each test uses a randomly selected injection time from the available light curve
 - Per-model recovery statistics are automatically saved to `{output_file}_stats.csv`
 - Per-model statistics are also accessible via `injector.stats` after completion
@@ -655,7 +583,35 @@ Run injection-retrieval tests for all transit models in `transit_models.npz`. Te
   - `n_recoveries` (int): Number of successful recoveries
   - `recovery_rate` (float): Recovery rate (n_recoveries / n_injections)
 
-**Note:** The `_inject_transit()` method is used internally for synthetic transit injection.
+##### `plot_completeness()`
+```python
+fig, ax = injector.plot_completeness(
+    stats_file: str = None,
+    figsize: tuple = (5, 4),
+    cmap: str = 'viridis',
+    save_fig: bool = False,
+    output_path: str = 'completeness.png',
+    dpi: int = 300,
+    font_family: str = 'sans-serif',
+    font_size: int = 8
+) -> tuple
+```
+
+Plot completeness matrix showing recovery rate as a function of transit depth and duration.
+
+**Parameters:**
+- `stats_file` (str, optional): Path to existing stats CSV file. If None, uses `self.stats` (default: None)
+- `figsize` (tuple, optional): Figure size (width, height) in inches (default: (5, 4))
+- `cmap` (str, optional): Colormap name for heatmap (default: 'viridis')
+- `save_fig` (bool, optional): Whether to save the figure (default: False)
+- `output_path` (str, optional): Path to save figure if `save_fig=True` (default: 'completeness.png')
+- `dpi` (int, optional): DPI for saved figure (default: 300)
+- `font_family` (str, optional): Font family for plot text (default: 'sans-serif')
+- `font_size` (int, optional): Font size in points (default: 8)
+
+**Returns:** Tuple of (fig, ax) matplotlib figure and axes objects, or (None, None) if no statistics available
+
+**Note:** This method should be called after `run_injection_retrieval()` or with a valid `stats_file` path.
 
 ## Utility Modules
 
@@ -708,7 +664,7 @@ time_binned, flux_binned, flux_err_binned = bin_to_long_cadence(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]
 ```
 
-Bin short-cadence TESS data to 30-minute long cadence using lightkurve.
+Bin short-cadence TESS data to 30-minute long cadence using `lightkurve`.
 
 **Parameters:**
 - `time` (np.ndarray): Time values to bin
@@ -716,8 +672,6 @@ Bin short-cadence TESS data to 30-minute long cadence using lightkurve.
 - `flux_err` (np.ndarray): Flux error values to bin
 
 **Returns:** Tuple of (binned_time, binned_flux, binned_flux_err)
-
-**Note:** Bins to 30 minutes (hardcoded), not a configurable parameter.
 
 ### `mono_cbp.utils.eclipses`
 
@@ -732,12 +686,12 @@ from mono_cbp.utils.eclipses import time_to_phase
 phase = time_to_phase(
     time: np.ndarray,
     period: float,
-    bjd0: float,
+    t0: float,
     centre: float = 0.5
 ) -> np.ndarray
 ```
 
-Calculate orbital phase from time.
+Convert time measurements to orbital phase of the eclipsing binary.
 
 **Parameters:**
 - `time` (np.ndarray): Time values (BJD)
@@ -747,16 +701,16 @@ Calculate orbital phase from time.
 
 **Returns:** Orbital phase values (0-1)
 
-**Note:** When `centre=0.5`, phase 0.5 corresponds to the reference epoch. When `centre=0.0`, phase 0.0 corresponds to the reference epoch.
+**Note:** When `centre=0.5`, phase 0.0 corresponds to the reference epoch. When `centre=0.0`, phase 0.5 corresponds to the reference epoch.
 
 ##### `get_eclipse_mask()`
 ```python
 from mono_cbp.utils.eclipses import get_eclipse_mask
 
 mask = get_eclipse_mask(
-    phase: np.ndarray,
-    eclipse_pos: float,
-    eclipse_width: float
+    phases: np.ndarray,
+    pos: float,
+    width: float
 ) -> np.ndarray
 ```
 
@@ -764,10 +718,10 @@ Create boolean mask for eclipse events.
 
 **Parameters:**
 - `phase` (np.ndarray): Orbital phase values
-- `eclipse_pos` (float): Eclipse center position (0-1)
-- `eclipse_width` (float): Eclipse width in phase units
+- `pos` (float): Mid-clipse position (0-1)
+- `width` (float): Eclipse width in phase units
 
-**Returns:** Boolean array (True = in eclipse)
+**Returns:** Boolean array (True = in-eclipse)
 
 ##### `get_eclipse_indices()`
 ```python
@@ -775,8 +729,8 @@ from mono_cbp.utils.eclipses import get_eclipse_indices
 
 indices = get_eclipse_indices(
     phase: np.ndarray,
-    eclipse_pos: float,
-    eclipse_width: float
+    pos: float,
+    width: float
 ) -> np.ndarray
 ```
 
@@ -794,58 +748,195 @@ Light curve detrending functions.
 ```python
 from mono_cbp.utils.detrending import detrend
 
-detrended, trend = detrend(
+flat_lcs, trend_lcs, bi_win_lens, cos_success = detrend(
     time: np.ndarray,
     flux: np.ndarray,
-    eclipse_mask: np.ndarray = None,
-    method: str = 'cb',
-    config: dict = None
-) -> tuple[np.ndarray, np.ndarray]
+    flux_err: np.ndarray,
+    method: str,
+    fname: str,
+    cos_win_len_max: int = 12,
+    cos_win_len_min: int = 1,
+    fap_threshold: float = 1e-2,
+    poly_order: int = 2,
+    mask: list = [],
+    edge_cutoff: int = 0,
+    max_splines: int = 25,
+    bi_win_len_max: int = 3,
+    bi_win_len_min: int = 1
+) -> tuple
 ```
 
-Detrend light curve using specified method (cosine-biweight or cosine-plus).
+Detrend a TESS EB light curve using different methods.
+
+**Method Options:**
+- `'cb'`: Iterative cosine + multi-biweight detrending
+- `'cp'`: Iterative cosine + penalised spline detrending
 
 **Parameters:**
 - `time` (np.ndarray): Time values
 - `flux` (np.ndarray): Flux values
-- `eclipse_mask` (np.ndarray, optional): Boolean mask for eclipses
-- `method` (str): Detrending method ('cb' or 'cp', default: 'cb')
-- `config` (dict, optional): Configuration parameters
+- `flux_err` (np.ndarray): Flux error values
+- `method` (str): Detrending method to use ('cb' or 'cp')
+- `fname` (str): Filename to print to user output
+- `cos_win_len_max` (int, optional): Maximum window length for cosine detrending in days (default: 12)
+- `cos_win_len_min` (int, optional): Minimum window length for cosine detrending in days (default: 1)
+- `fap_threshold` (float, optional): False alarm probability threshold (default: 1e-2)
+- `poly_order` (int, optional): Polynomial order for trend fitting (default: 2)
+- `mask` (list, optional): Boolean mask for data points to exclude from fitting (default: [])
+- `edge_cutoff` (int, optional): Amount of data at edges to exclude in days (default: 0)
+- `max_splines` (int, optional): Maximum number of splines for penalised spline fitting (default: 25)
+- `bi_win_len_max` (int, optional): Maximum window length for biweight detrending in days (default: 3)
+- `bi_win_len_min` (int, optional): Minimum window length for biweight detrending in days (default: 1)
 
-**Returns:** Tuple of (detrended_flux, trend_flux)
+**Returns:** Tuple of (detrended_flux, trend_flux, biweight_window_lengths, cosine_success_count)
 
 ##### `cosine_detrend()`
 ```python
 from mono_cbp.utils.detrending import cosine_detrend
 
-detrended = cosine_detrend(
+result = cosine_detrend(
+    time: np.ndarray,
     flux: np.ndarray,
-    win_len: float = 5.0
-) -> np.ndarray
+    flux_err: np.ndarray,
+    win_len_max: int = 12,
+    win_len_min: int = 1,
+    threshold: float = 1e-2,
+    poly_order: int = 2,
+    mask: np.ndarray = None,
+    edge_cutoff: int = 0
+) -> tuple or np.ndarray
 ```
 
-Apply cosine filter detrending to flux.
+Performs iterative cosine detrending on the input light curve.
 
 **Parameters:**
-- `flux` (np.ndarray): Flux values to detrend
-- `win_len` (float): Window length in days
+- `time` (np.ndarray): Time values
+- `flux` (np.ndarray): Flux values
+- `flux_err` (np.ndarray): Flux error values
+- `win_len_max` (int, optional): Maximum window length for cosine fitting in days (default: 12)
+- `win_len_min` (int, optional): Minimum window length for cosine fitting in days (default: 1)
+- `threshold` (float, optional): Threshold for false alarm probability (default: 1e-2)
+- `poly_order` (int, optional): Order of polynomial for initial detrending (default: 2)
+- `mask` (np.ndarray, optional): Boolean mask for data points to exclude from fitting (default: None)
+- `edge_cutoff` (int, optional): Amount of data at edges to exclude in time units (default: 0)
 
-**Returns:** Detrended flux array
+**Returns:** Tuple of (detrended_flux, fitted_trend, window_length) if successful, just the input flux if unsuccessful
+
+**Raises:**
+- `ValueError`: If maximum window length is smaller than minimum window length
 
 ##### `run_multi_biweight()`
 ```python
 from mono_cbp.utils.detrending import run_multi_biweight
 
-detrended = run_multi_biweight(
+biweight_lcs, biweight_trends, win_len_grid = run_multi_biweight(
+    time: np.ndarray,
     flux: np.ndarray,
-    win_len_max: float = 3.0,
-    win_len_min: float = 1.0
+    max_win_len: int = 3,
+    min_win_len: int = 1,
+    edge_cutoff: int = 0
+) -> tuple
+```
+
+Run biweight detrending over a range of window lengths.
+
+**Parameters:**
+- `time` (np.ndarray): Time values
+- `flux` (np.ndarray): Flux values
+- `max_win_len` (int, optional): Maximum window length for biweight detrending in days (default: 3)
+- `min_win_len` (int, optional): Minimum window length for biweight detrending in days (default: 1)
+- `edge_cutoff` (int, optional): Amount of data at edges to exclude in days (default: 0)
+
+**Returns:** Tuple of (detrended_light_curves, fitted_trends, window_length_grid)
+
+**Raises:**
+- `ValueError`: If window length inputs are invalid
+
+##### `slider_detrend()`
+```python
+from mono_cbp.utils.detrending import slider_detrend
+
+flatten_lc, trend_lc = slider_detrend(
+    time: np.ndarray,
+    flux: np.ndarray,
+    win_len: float,
+    mask: np.ndarray = None,
+    edge_cutoff: int = 0
+) -> tuple
+```
+
+Apply sliding window detrending to the light curve (biweight).
+
+**Parameters:**
+- `time` (np.ndarray): Time values
+- `flux` (np.ndarray): Flux values
+- `win_len` (float): Length of the sliding window in days
+- `mask` (np.ndarray, optional): Boolean mask for data points to exclude from fitting (default: None)
+- `edge_cutoff` (int, optional): Amount of data at edges to exclude in time units (default: 0)
+
+**Returns:** Tuple of (detrended_light_curve, fitted_trend)
+
+##### `poly_normalise()`
+```python
+from mono_cbp.utils.detrending import poly_normalise
+
+normalised_flux = poly_normalise(
+    time: np.ndarray,
+    flux: np.ndarray,
+    order: int = 2
 ) -> np.ndarray
 ```
 
-Apply biweight detrending with optimal window selection.
+Normalises the flux using a polynomial fit.
 
-**Returns:** Detrended flux array
+Used for reducing the half-sector periodicity from TESS data before calculating the Lomb-Scargle periodogram.
+
+**Parameters:**
+- `time` (np.ndarray): Time values
+- `flux` (np.ndarray): Flux values
+- `order` (int, optional): Order of the polynomial (default: 2)
+
+**Returns:** Normalised flux array
+
+##### `get_period_max_power()`
+```python
+from mono_cbp.utils.detrending import get_period_max_power
+
+period = get_period_max_power(
+    time: np.ndarray,
+    flux: np.ndarray,
+    flux_err: np.ndarray
+) -> float
+```
+
+Calculates the period with maximum power from the Lomb-Scargle periodogram.
+
+**Parameters:**
+- `time` (np.ndarray): Time values
+- `flux` (np.ndarray): Flux values
+- `flux_err` (np.ndarray): Flux error values
+
+**Returns:** Period with maximum power
+
+##### `get_fap()`
+```python
+from mono_cbp.utils.detrending import get_fap
+
+fap = get_fap(
+    time: np.ndarray,
+    flux: np.ndarray,
+    flux_err: np.ndarray
+) -> float
+```
+
+Calculates the false alarm probability of the peak of the Lomb-Scargle periodogram.
+
+**Parameters:**
+- `time` (np.ndarray): Time values
+- `flux` (np.ndarray): Flux values
+- `flux_err` (np.ndarray): Flux error values
+
+**Returns:** False alarm probability at the peak of the periodogram
 
 ### `mono_cbp.utils.monofind`
 
@@ -865,17 +956,18 @@ peaks, meta = monofind(
 ) -> tuple
 ```
 
-Detect single transit-like events in detrended light curve using MAD threshold.
+Find individual threshold crossing events (TCEs) in timeseries data based on the MAD of the light curve.
 
 **Parameters:**
-- `time` (np.ndarray): Time values of the light curve (masked)
-- `flux` (np.ndarray): Detrended flux values
-- `mad` (float, optional): MAD multiplier for detection threshold (default: 3.0)
-- `var_mad` (np.ndarray, optional): Variable MAD values calculated using rolling window for adaptive thresholding. If None, uses constant MAD (default: None)
+- `time` (np.ndarray): Time values of the light curve
+- `flux` (np.ndarray): Flux values of the light curve
+- `mad` (float, optional): MAD multiplier for event detection (default: 3.0)
+- `var_mad` (np.ndarray, optional): MAD values calculated using a rolling window for adaptive thresholding. If None, uses constant MAD (default: None)
 
 **Returns:** Tuple of (event_indices, metadata_dict) where:
-- `event_indices` (list): Indices of detected event peaks in the masked time/flux arrays
+- `event_indices` (np.ndarray): Indices of detected event peaks
 - `metadata_dict` (dict): Dictionary containing:
+  - `'threshold'`: Detection threshold value
   - `'depths'`: Event depths (flux dip magnitudes)
   - `'widths'`: Event widths (durations in days)
   - `'start_times'`: Event start times
@@ -883,6 +975,60 @@ Detect single transit-like events in detrended light curve using MAD threshold.
 
 **Algorithm:**
 Identifies dips in the light curve that exceed the MAD-based threshold, groups nearby points into events, and calculates event properties.
+
+##### `get_var_mad()`
+```python
+from mono_cbp.utils.monofind import get_var_mad
+
+var_mad = get_var_mad(
+    flux: np.ndarray,
+    npoints: int
+) -> np.ndarray
+```
+
+Calculates the MAD of a light curve over a running window.
+
+**Parameters:**
+- `flux` (np.ndarray): Flux values of a light curve
+- `npoints` (int): Number of data points in a given window
+
+**Returns:** MAD of the light curve over a running window
+
+##### `get_gaps_indices()`
+```python
+from mono_cbp.utils.monofind import get_gaps_indices
+
+gaps_indices = get_gaps_indices(
+    time: np.ndarray,
+    break_tolerance: float
+) -> np.ndarray
+```
+
+Array indices where 'time' has gaps longer than 'break_tolerance'.
+
+**Parameters:**
+- `time` (np.ndarray): Array of time values
+- `break_tolerance` (float): Threshold for the gap distance in days
+
+**Returns:** Indices on the time axis where gaps occur
+
+##### `consecutive()`
+```python
+from mono_cbp.utils.monofind import consecutive
+
+chunks = consecutive(
+    data: np.ndarray,
+    stepsize: int = 1
+) -> list
+```
+
+Split an array into consecutive chunks if gap between values is above a given step size.
+
+**Parameters:**
+- `data` (np.ndarray): Data to find gaps in
+- `stepsize` (int, optional): The size of the step to cluster consecutive data (default: 1)
+
+**Returns:** List of arrays of clustered data
 
 ### `mono_cbp.utils.plotting`
 
@@ -896,23 +1042,97 @@ from mono_cbp.utils.plotting import plot_event
 
 fig = plot_event(
     time: np.ndarray,
-    flux: np.ndarray,
     event_time: float,
-    window: float = 1.0,
-    title: str = None
-) -> matplotlib.figure.Figure
+    flat_flux: np.ndarray,
+    raw_flux: np.ndarray,
+    flux_err: np.ndarray,
+    trend: np.ndarray,
+    fname: str,
+    mad: float,
+    var_mad: np.ndarray,
+    depth: float,
+    width: float,
+    phase: float,
+    SNR: float,
+    peaks: np.ndarray,
+    event_no: int,
+    ecl_mask: np.ndarray = None,
+    output_dir: str = None,
+    mask: list = [],
+    figsize: tuple = (20/3, 8),
+    save: bool = True,
+    return_fig: bool = False
+) -> matplotlib.figure.Figure or None
 ```
 
-Plot zoomed view of detected event.
+Plot the light curve for a detected event.
 
 **Parameters:**
-- `time` (np.ndarray): Time values
-- `flux` (np.ndarray): Flux values
-- `event_time` (float): Time of event center
-- `window` (float): Window size in days (default: 1.0)
-- `title` (str, optional): Plot title
+- `time` (np.ndarray): Array of time values
+- `event_time` (float): Time of the event in days
+- `flat_flux` (np.ndarray): Flattened flux array
+- `raw_flux` (np.ndarray): Raw flux array
+- `flux_err` (np.ndarray): Flux error array
+- `trend` (np.ndarray): Trend array
+- `fname` (str): Filename
+- `mad` (float): Threshold multiplier of Median Absolute Deviation
+- `var_mad` (np.ndarray): Variable Median Absolute Deviation
+- `depth` (float): Depth of the event
+- `width` (float): Width of the event
+- `phase` (float): Binary phase of the event
+- `SNR` (float): Signal-to-noise ratio of the event
+- `peaks` (np.ndarray): Array of detected peak indices
+- `event_no` (int): Event number
+- `ecl_mask` (np.ndarray, optional): Eclipse mask array (default: None)
+- `output_dir` (str, optional): Output directory (default: None)
+- `mask` (list, optional): List of boolean masks for the data (default: [])
+- `figsize` (tuple, optional): Figure size (default: (20/3, 8))
+- `save` (bool, optional): Whether to save the plot (default: True)
+- `return_fig` (bool, optional): Whether to return the figure object (default: False)
 
-**Returns:** matplotlib Figure object
+**Returns:** matplotlib Figure object if return_fig is True, otherwise None
+
+##### `plot_no_events()`
+```python
+from mono_cbp.utils.plotting import plot_no_events
+
+fig = plot_no_events(
+    time: np.ndarray,
+    flat_flux: np.ndarray,
+    raw_flux: np.ndarray,
+    flux_err: np.ndarray,
+    trend: np.ndarray,
+    fname: str,
+    mad: float,
+    var_mad: np.ndarray,
+    ecl_mask: np.ndarray = None,
+    output_dir: str = None,
+    mask: list = [],
+    figsize: tuple = (20/3, 8),
+    save: bool = True,
+    return_fig: bool = False
+) -> matplotlib.figure.Figure or None
+```
+
+Plot light curves with no events detected.
+
+**Parameters:**
+- `time` (np.ndarray): Time array
+- `flat_flux` (np.ndarray): Flattened flux array
+- `raw_flux` (np.ndarray): Raw flux array
+- `flux_err` (np.ndarray): Flux error array
+- `trend` (np.ndarray): Trend array
+- `fname` (str): Filename
+- `mad` (float): Threshold multiplier of Median Absolute Deviation
+- `var_mad` (np.ndarray): Variable Median Absolute Deviation
+- `ecl_mask` (np.ndarray, optional): Eclipse mask array (default: None)
+- `output_dir` (str, optional): Output directory (default: None)
+- `mask` (list, optional): Mask for the data (default: [])
+- `figsize` (tuple, optional): Figure size (default: (20/3, 8))
+- `save` (bool, optional): Whether to save the plot to disk (default: True)
+- `return_fig` (bool, optional): Whether to return the figure object (default: False)
+
+**Returns:** matplotlib Figure object if return_fig is True, otherwise None
 
 ### `mono_cbp.utils.common`
 
@@ -930,13 +1150,15 @@ logger = setup_logging(
 ) -> logging.Logger
 ```
 
-Configure logging for mono-cbp package.
+Set up logging for mono-cbp package.
 
 **Parameters:**
 - `level` (int, optional): Logging level (e.g., logging.INFO, logging.DEBUG) (default: logging.INFO)
 - `log_file` (str, optional): Path to log file. If None, logs to console only (default: None)
 
 **Returns:** Configured logger instance
+
+**Note:** Clears existing handlers and sets up both console and file handlers (if log_file is specified).
 
 ##### `get_snr()`
 ```python
@@ -950,22 +1172,22 @@ snr = get_snr(
 ) -> float
 ```
 
-Calculate signal-to-noise ratio for a transit event.
+Calculate signal-to-noise ratio for a threshold crossing event (TCE).
 
 **Parameters:**
-- `depth` (float): Transit depth (fractional flux decrease)
-- `error` (float): Combined measurement uncertainty per cadence point
-- `duration` (float): Transit duration in days
+- `depth` (float): TCE depth (fractional flux decrease)
+- `error` (float): Combined measurement uncertainty
+- `duration` (float): TCE duration in days
 - `cadence` (int, optional): Observation cadence in minutes (default: 30)
 
 **Returns:** Signal-to-noise ratio value
 
 **Formula:**
-SNR = (depth / error) × sqrt(N_cadences) where N_cadences = duration × (1440 / cadence)
+SNR = (depth / error) × sqrt(duration / cadence_days) where cadence_days = cadence_minutes / 1440
 
 ### `mono_cbp.utils.transit_models`
 
-Transit model creation and handling.
+Transit model creation and handling for injection-retrieval testing.
 
 #### Functions
 
@@ -973,46 +1195,87 @@ Transit model creation and handling.
 ```python
 from mono_cbp.utils.transit_models import create_transit_models
 
-models = create_transit_models(
-    radii: np.ndarray,
-    periods: np.ndarray,
-    stellar_params: dict,
-    config: dict = None
+models_dict = create_transit_models(
+    depth_range: tuple = (1e-3, 1e-2),
+    duration_range: tuple = (0.1, 1.0),
+    num_depths: int = 7,
+    num_durations: int = 7,
+    time_range: tuple = (-1, 1),
+    cadence_minutes: float = 30,
+    impact_parameter: float = 0.0,
+    period: float = 10.0,
+    limb_dark_coeffs: tuple = (0.3, 0.2)
 ) -> dict
 ```
 
-Create synthetic transit models for injection-retrieval testing.
+Create a grid of synthetic transit light curves for injection-retrieval testing.
 
-**Returns:** Dictionary with model parameters and synthetic transits
+This function generates transit models across a grid of transit depths and durations, which can be used to characterize pipeline completeness and detection efficiency.
+
+**Parameters:**
+- `depth_range` (tuple, optional): (min, max) transit depth in fractional flux units (default: (1e-3, 1e-2) = 0.1% to 1%)
+- `duration_range` (tuple, optional): (min, max) transit duration in days (default: (0.1, 1.0))
+- `num_depths` (int, optional): Number of depth values to sample (default: 7)
+- `num_durations` (int, optional): Number of duration values to sample (default: 7)
+- `time_range` (tuple, optional): (start, end) time range in days centered on transit (default: (-1, 1))
+- `cadence_minutes` (float, optional): Observation cadence in minutes (default: 30)
+- `impact_parameter` (float, optional): Impact parameter (0 = center of limb) (default: 0.0)
+- `period` (float, optional): Orbital period in days (arbitrary, >2×duration) (default: 10.0)
+- `limb_dark_coeffs` (tuple, optional): Quadratic limb darkening coefficients (u1, u2) (default: (0.3, 0.2))
+
+**Returns:** Dictionary containing:
+- `'time'`: Time array (same for all models)
+- `'models'`: List of transit model dictionaries, each containing:
+  - `'flux'`: Normalized flux array
+  - `'depth'`: Transit depth
+  - `'duration'`: Transit duration in days
+  - `'impact_parameter'`: Impact parameter
+  - `'ror'`: Radius ratio (planet radius / star radius)
+- `'num_depths'`: Number of depth values
+- `'num_durations'`: Number of duration values
+- `'depth_range'`: Depth range tuple
+- `'duration_range'`: Duration range tuple
+- `'cadence_minutes'`: Cadence in minutes
 
 ##### `save_transit_models()`
 ```python
 from mono_cbp.utils.transit_models import save_transit_models
 
 save_transit_models(
-    models: dict,
-    output_path: str
+    models_dict: dict,
+    filepath: str
 ) -> None
 ```
 
-Save transit models to .npz file.
+Save transit models to an .npz file.
+
+**Parameters:**
+- `models_dict` (dict): Dictionary from `create_transit_models()`
+- `filepath` (str): Path to save .npz file
 
 ##### `load_transit_models()`
 ```python
 from mono_cbp.utils.transit_models import load_transit_models
 
-models = load_transit_models(
-    models_path: str
+models_dict = load_transit_models(
+    filepath: str
 ) -> dict
 ```
 
-Load transit models from .npz file.
+Load transit models from an .npz file.
 
-**Returns:** Dictionary with transit models
+**Parameters:**
+- `filepath` (str): Path to .npz file created by `save_transit_models()`
+
+**Returns:** Dictionary with same structure as `create_transit_models()` output
 
 ## Configuration
 
-### Default Configuration
+The mono-cbp package uses a hierarchical configuration system to control pipeline behavior. Configuration can be provided when initialising pipeline components or by using the configuration utilities.
+
+### Configuration Functions
+
+#### `get_default_config()`
 
 ```python
 from mono_cbp.config import get_default_config
@@ -1020,66 +1283,191 @@ from mono_cbp.config import get_default_config
 config = get_default_config()
 ```
 
-Returns the default configuration dictionary.
+Get a copy of the default configuration.
+
+**Returns:** Deep copy of the default configuration dictionary
+
+**Note:** Returns a deep copy to prevent accidental modification of the default configuration.
+
+#### `merge_config()`
+
+```python
+from mono_cbp.config import merge_config
+
+merged = merge_config(
+    user_config: dict,
+    default_config: dict = None
+) -> dict
+```
+
+Merge user configuration with default configuration.
+
+**Parameters:**
+- `user_config` (dict): User-provided configuration
+- `default_config` (dict, optional): Base configuration. Uses `DEFAULT_CONFIG` if None (default: None)
+
+**Returns:** Merged configuration dictionary
+
+**Behavior:**
+- Recursively merges nested dictionaries
+- User values override default values
+- Creates a deep copy to prevent mutation of inputs
+
+**Example:**
+```python
+from mono_cbp.config import get_default_config, merge_config
+
+# Start with defaults
+config = get_default_config()
+
+# Override specific values
+user_config = {
+    'transit_finding': {
+        'mad_threshold': 4.0,
+        'cosine': {
+            'win_len_max': 15
+        }
+    }
+}
+
+# Merge configurations
+final_config = merge_config(user_config, config)
+```
 
 ### Configuration Structure
+
+The default configuration dictionary with all available options:
 
 ```python
 config = {
     'transit_finding': {
-        'edge_cutoff': float,
-        'mad_threshold': float,
-        'detrending_method': str,  # 'cb' or 'cp'
-        'generate_vetting_plots': bool,
-        'generate_skye_plots': bool,
-        'generate_event_snippets': bool,
-        'save_event_snippets': bool,
-        'cadence_minutes': int,
+        'edge_cutoff': 0.0,                     # Edge cutoff in days
+        'mad_threshold': 3.0,                   # MAD threshold multiplier
+        'detrending_method': 'cb',              # 'cb' (cosine+biweight) or 'cp' (cosine+pspline)
+        'generate_vetting_plots': False,        # Generate diagnostic plots for events
+        'generate_skye_plots': False,           # Generate Skye metric histograms
+        'generate_event_snippets': True,        # Generate event data snippets
+        'save_event_snippets': True,            # Save event snippets to disk
+        'cadence_minutes': 30,                  # Cadence in minutes
         'cosine': {
-            'win_len_max': float,
-            'win_len_min': float,
-            'fap_threshold': float,
-            'poly_order': int,
+            'win_len_max': 12,                  # Maximum window length (days)
+            'win_len_min': 1,                   # Minimum window length (days)
+            'fap_threshold': 1e-2,              # False alarm probability threshold
+            'poly_order': 2,                    # Polynomial order
         },
         'biweight': {
-            'win_len_max': float,
-            'win_len_min': float,
+            'win_len_max': 3,                   # Maximum window length (days)
+            'win_len_min': 1,                   # Minimum window length (days)
         },
         'pspline': {
-            'max_splines': int,
+            'max_splines': 25,                  # Maximum number of splines
         },
         'filters': {
-            'min_snr': 5,
-            'max_duration_days': 1,
-            'det_dependence_threshold': 18,
+            'min_snr': 5,                       # Minimum SNR for filtering
+            'max_duration_days': 1,             # Maximum duration in days
+            'det_dependence_threshold': 18,     # Detrending dependence threshold
         }
     },
     'model_comparison': {
-        'tune': int,
-        'draws': int,
-        'chains': int,
-        'cores': int,
-        'target_accept': float,
-        'sigma_threshold': float,
-        'aic_threshold': float,
-        'save_plots': bool,
-        'plot_dir': str,
+        'tune': 1000,                           # MCMC tuning steps
+        'draws': 1000,                          # MCMC draws per chain
+        'chains': 4,                            # Number of MCMC chains
+        'cores': 4,                             # Number of CPU cores
+        'target_accept': 0.99,                  # MCMC target acceptance rate
+        'sigma_threshold': 3,                   # Sigma threshold for outlier removal
+        'aic_threshold': 2,                     # AIC difference threshold
+        'rmse_threshold': 1.2,                  # RMSE threshold for classification
+        'save_plots': False,                    # Save model comparison plots
+        'plot_dir': None,                       # Directory for plots (None = use output_dir)
     },
     'injection_retrieval': {
-        'n_injections': int,
+        'n_injections': 1000,                   # Number of injections per model
     }
 }
 ```
 
-## Type Hints
+### Configuration Sections
 
-The package uses type hints throughout. Key types:
+#### `transit_finding`
+
+Controls the transit finding process including detrending and event detection.
+
+**Top-level parameters:**
+- `edge_cutoff` (float): Amount of data at light curve edges to exclude (in days)
+- `mad_threshold` (float): MAD multiplier for event detection threshold
+- `detrending_method` (str): Detrending method - `'cb'` (cosine+biweight) or `'cp'` (cosine+pspline)
+- `generate_vetting_plots` (bool): Generate diagnostic plots showing detected events
+- `generate_skye_plots` (bool): Generate histograms of Skye metric distributions
+- `generate_event_snippets` (bool): Extract event data snippets for vetting
+- `save_event_snippets` (bool): Save event snippets to disk (requires `generate_event_snippets=True`)
+- `cadence_minutes` (int): Observation cadence in minutes
+
+**`cosine` subsection:**
+Parameters for iterative cosine detrending step.
+- `win_len_max` (float): Maximum window length in days
+- `win_len_min` (float): Minimum window length in days
+- `fap_threshold` (float): False alarm probability threshold for periodogram
+- `poly_order` (int): Polynomial order for initial detrending
+
+**`biweight` subsection:**
+Parameters for biweight detrending (used with `detrending_method='cb'`).
+- `win_len_max` (float): Maximum window length in days
+- `win_len_min` (float): Minimum window length in days
+
+**`pspline` subsection:**
+Parameters for penalised spline detrending (used with `detrending_method='cp'`).
+- `max_splines` (int): Maximum number of splines for fitting
+
+**`filters` subsection:**
+Quality filter thresholds for detected events (applied via `TransitFinder.filter_events()`).
+- `min_snr` (float): Minimum signal-to-noise ratio
+- `max_duration_days` (float): Maximum transit duration in days
+- `det_dependence_threshold` (int): Detrending dependence threshold (number of window lengths)
+
+#### `model_comparison`
+
+Controls Bayesian model comparison for candidate vetting.
+
+- `tune` (int): Number of MCMC tuning steps
+- `draws` (int): Number of MCMC draws per chain
+- `chains` (int): Number of MCMC chains
+- `cores` (int): Number of CPU cores for parallel sampling
+- `target_accept` (float): MCMC target acceptance rate
+- `sigma_threshold` (float): Sigma threshold for outlier removal before fitting
+- `aic_threshold` (float): AIC difference threshold for model selection (models differing by less are ambiguous)
+- `rmse_threshold` (float): RMSE threshold for classification quality
+- `save_plots` (bool): Save model comparison diagnostic plots
+- `plot_dir` (str or None): Directory for plots (None uses output_dir)
+
+#### `injection_retrieval`
+
+Controls injection-retrieval testing.
+
+- `n_injections` (int): Number of injection tests per transit model
+
+### Using Configuration
+
+Configuration can be passed when initialising pipeline components:
 
 ```python
-from typing import Union, Optional, List, Dict, Tuple
-import numpy as np
-import pandas as pd
+from mono_cbp import MonoCBPPipeline
+from mono_cbp.config import get_default_config, merge_config
 
-PathLike = Union[str, Path]
-ArrayLike = Union[np.ndarray, List, Tuple]
+# Get default config
+config = get_default_config()
+
+# Customize specific values
+user_config = {
+    'transit_finding': {
+        'mad_threshold': 4.0,
+    }
+}
+config = merge_config(user_config, config)
+
+# Initialise pipeline with custom config
+pipeline = MonoCBPPipeline(
+    catalogue_path='catalogue.csv',
+    data_dir='./data',
+    config=config
+)
 ```

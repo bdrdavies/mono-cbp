@@ -28,7 +28,7 @@ class MonoCBPPipeline:
     4. (Optional) Injection-retrieval testing
 
     Attributes:
-        catalogue: EB catalogue DataFrame
+        catalogue: Input catalogue DataFrame
         config (dict): Pipeline configuration
         data_dir (str): Data directory path
         output_dir (str): Output directory path
@@ -40,7 +40,7 @@ class MonoCBPPipeline:
     """
 
     def __init__(self, catalogue_path, data_dir='./data', output_dir='./results',
-                 sector_times_path='../../catalogue/sector_times.csv', TEBC=False, transit_models_path=None, config=None):
+                 sector_times_path='../../catalogues/sector_times.csv', TEBC=False, transit_models_path=None, config=None):
         """Initialise MonoCBPPipeline.
 
         Args:

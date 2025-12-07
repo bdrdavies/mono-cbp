@@ -22,19 +22,19 @@ def create_transit_models(
     which can be used to characterize pipeline completeness and detection efficiency.
 
     Args:
-        depth_range (tuple): (min, max) transit depth in fractional flux units.
-                            Defaults to (1e-3, 1e-2) = 0.1% to 1%.
-        duration_range (tuple): (min, max) transit duration in days.
-                               Defaults to (0.1, 1.0).
-        num_depths (int): Number of depth values to sample. Defaults to 7.
-        num_durations (int): Number of duration values to sample. Defaults to 7.
-        time_range (tuple): (start, end) time range in days centered on transit.
-                           Defaults to (-1, 1).
-        cadence_minutes (float): Observation cadence in minutes. Defaults to 30.
-        impact_parameter (float): Impact parameter (0 = center of limb). Defaults to 0.0.
-        period (float): Orbital period in days (arbitrary, >2*duration). Defaults to 10.0.
-        limb_dark_coeffs (tuple): Quadratic limb darkening coefficients (u1, u2).
-                                 Defaults to (0.3, 0.2).
+        depth_range (tuple, optional): (min, max) transit depth in fractional flux units.
+                                       Defaults to (1e-3, 1e-2) = 0.1% to 1%.
+        duration_range (tuple, optional): (min, max) transit duration in days.
+                                         Defaults to (0.1, 1.0).
+        num_depths (int, optional): Number of depth values to sample. Defaults to 7.
+        num_durations (int, optional): Number of duration values to sample. Defaults to 7.
+        time_range (tuple, optional): (start, end) time range in days centered on transit.
+                                     Defaults to (-1, 1).
+        cadence_minutes (float, optional): Observation cadence in minutes. Defaults to 30.
+        impact_parameter (float, optional): Impact parameter (0 = center of limb). Defaults to 0.0.
+        period (float, optional): Orbital period in days (arbitrary, >2×duration). Defaults to 10.0.
+        limb_dark_coeffs (tuple, optional): Quadratic limb darkening coefficients (u1, u2).
+                                           Defaults to (0.3, 0.2).
 
     Returns:
         dict: Dictionary containing:
@@ -42,9 +42,14 @@ def create_transit_models(
             - 'models': List of transit model dictionaries, each containing:
                 - 'flux': Normalized flux array
                 - 'depth': Transit depth
-                - 'duration': Transit duration (days)
+                - 'duration': Transit duration in days
                 - 'impact_parameter': Impact parameter
                 - 'ror': Radius ratio (planet radius / star radius)
+            - 'num_depths': Number of depth values
+            - 'num_durations': Number of duration values
+            - 'depth_range': Depth range tuple
+            - 'duration_range': Duration range tuple
+            - 'cadence_minutes': Cadence in minutes
     """
     # Define depth grid (log scale)
     depth_min, depth_max = depth_range
