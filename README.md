@@ -1,6 +1,6 @@
 # mono-cbp: Search for Monotransits of Circumbinary Planets
 
-A Python package for detecting circumbinary planets in TESS eclipsing binary light curves through the identification of single transit events (monotransits).
+A Python package for detecting circumbinary planets in TESS eclipsing binary light curves through the identification of single transit events ("monotransits").
 
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/downloads/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
@@ -11,19 +11,19 @@ A Python package for detecting circumbinary planets in TESS eclipsing binary lig
 
 ## Key Features
 
-- **Eclipse Masking**: Automatically mask primary and secondary eclipses in eclipsing binary light curves with eclipse positions and widths provided by an input catalogue
-- **Transit Detection**: Removes unwanted trends from the input light curves and performs single-event detection using the `monofind` algorithm
-- **Bayesian Model Comparison**: Probabilistic event classification to discern transit-like events and systematics/detrending artefacts
+- **Eclipse Masking**: Automatically mask primary and secondary eclipses in eclipsing binary light curves using eclipse positions and widths and binary ephemeris provided by an input catalogue
+- **Transit Detection**: Removes unwanted trends from the input light curves and performs single-event detection using the by identifying Threshold Crossing Events (see [Hawthorn et al. 2024](https://academic.oup.com/mnras/article/528/2/1841/7589620?login=false))
+- **Bayesian Model Comparison**: Event classification to discern transit-like events and systematics/detrending artefacts
 - **Injection-Retrieval Testing**: Completeness analysis through synthetic transit injection and recovery statistics
 - **Modular Architecture**: Use individual components independently or run the complete integrated pipeline
-- **Configuration-Driven**: Easily customize parameters via Python dictionaries without modifying code
+- **Configuration-Driven**: Easily customise parameters via Python dictionaries or JSON files without modifying code
 - **Command-Line Interface**: Shell scripts and CLI subcommands for batch processing and reproducibility
 
 ## Installation
 
 ### Requirements
 
-- Python 3.8 or higher (tested with Python 3.9)
+- Python 3.8 or higher (tested most rigourously with Python 3.9)
 
 ### From Source
 
@@ -31,6 +31,14 @@ A Python package for detecting circumbinary planets in TESS eclipsing binary lig
 git clone https://github.com/bdrdavies/mono-cbp.git
 cd mono-cbp
 pip install -e .
+```
+
+It is advisable to install `mono-cbp` into a Python environment using your favourite package manager, e.g. for `conda`:
+
+```bash
+conda create --name mono-cbp
+conda activate mono-cbp
+# Install from source as above
 ```
 
 This installs the package in editable mode and creates the `mono-cbp` command-line tool.
@@ -46,20 +54,20 @@ See [requirements.txt](requirements.txt) for the complete dependency list and ex
 
 ## Examples & Tutorials
 
-Six Jupyter notebooks in the `examples/` directory demonstrate the complete workflow:
+There are a series of Jupyter notebooks in the `examples/` directory to demonstrate how to use the package in your own code:
 
-1. **[00_download_light_curves.ipynb](examples/00_download_light_curves.ipynb)** - Download TESS light curves in the `mono-cbp` format using `lightkurve`
+1. **[00_download_light_curves.ipynb](examples/00_download_light_curves.ipynb)** - Download TESS light curves in the `mono-cbp` format using [lightkurve](https://lightkurve.github.io/lightkurve/)
 2. **[01_complete_pipeline.ipynb](examples/01_complete_pipeline.ipynb)** - End-to-end workflow on sample data
-3. **[02_eclipse_masking.ipynb](examples/02_eclipse_masking.ipynb)** - Eclipse masking demonstration
-4. **[03_transit_finding.ipynb](examples/03_transit_finding.ipynb)** - Transit detection walkthrough
-5. **[04_model_comparison.ipynb](examples/04_model_comparison.ipynb)** - Bayesian classification details
+3. **[02_eclipse_masking.ipynb](examples/02_eclipse_masking.ipynb)** - Eclipse masking demo
+4. **[03_transit_finding.ipynb](examples/03_transit_finding.ipynb)** - TCE detection example
+5. **[04_model_comparison.ipynb](examples/04_model_comparison.ipynb)** - Bayesian model comparison example
 6. **[05_injection_retrieval.ipynb](examples/05_injection_retrieval.ipynb)** - Completeness testing
 
 ## Documentation
 
 Documentation is available in the `docs/` directory:
 
-- **[docs/quickstart.md](docs/quickstart.md)** - Quick start guide
+- **[docs/quickstart.md](docs/quickstart.md)** - Quickstart guide
 - **[docs/data_formats.md](docs/data_formats.md)** - Input and output data format specifications
 - **[docs/configuration.md](docs/configuration.md)** - Configuration system reference
 - **[docs/api_reference.md](docs/api_reference.md)** - API documentation

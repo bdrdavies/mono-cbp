@@ -6,7 +6,7 @@
 #
 
 # Default paths
-CATALOGUE="${1:-catalogues/TEBC_morph_05_P_7_ADJUSTED.csv}"
+CATALOGUE="${1:-catalogues/TEBC_morph_05_P_7.csv}"
 DATA_DIR="${2:-data}"
 SECTOR_TIMES="catalogues/sector_times.csv"
 OUTPUT_DIR="results"

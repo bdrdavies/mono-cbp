@@ -744,7 +744,7 @@ class TransitFinder:
                 plt.title(f'Sector {sector}: {len(sector_event_times)} events',
                          fontsize=30, pad=20)
                 plt.ylabel('Number of events', fontsize=30)
-                plt.xlabel('Time - 2457000 (BTJD days)', fontsize=30)
+                plt.xlabel('Time - 2457000 (BJD)', fontsize=30)
                 plt.xticks(fontsize=30)
                 plt.yticks(fontsize=30)
 

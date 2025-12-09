@@ -6,7 +6,7 @@
 # Usage: ./mask_eclipses.sh [catalogue] [data_dir]
 #
 
-CATALOGUE="${1:-catalogues/TEBC_morph_05_P_7_ADJUSTED.csv}"
+CATALOGUE="${1:-catalogues/TEBC_morph_05_P_7.csv}"
 DATA_DIR="${2:-data}"
 CONFIG_FILE="mono_cbp/config_example.json"
 

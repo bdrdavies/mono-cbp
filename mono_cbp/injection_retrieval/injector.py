@@ -462,18 +462,66 @@ class TransitInjector:
                                  recovered_duration, recovered_snr):
         """Record injection-retrieval results."""
         # Calculate injected SNR
+        # nearby = points within 1 day of injection (on full time array)
         nearby = np.abs(time - inj_time) < 1.0
-        if np.any(nearby):
-            inj_flux_err = np.median(flux_err[nearby])
-            nearby_on_masked = nearby[mask]
-            if np.any(nearby_on_masked):
-                inj_scatter = np.std(flatten_lc[nearby_on_masked])
+
+        # in_transit = points within the injected transit (EXCLUDE from scatter calculation!)
+        in_transit = np.abs(time - inj_time) < (duration_model / 2)
+
+        # nearby_and_masked = points that are nearby, out-of-eclipse, AND not in the injected transit
+        nearby_and_masked = nearby & mask & ~in_transit
+
+        if np.any(nearby_and_masked):
+            # Get flux error from nearby points
+            inj_flux_err = np.median(flux_err[nearby_and_masked])
+
+            # Get scatter from detrended lightcurve
+            # flatten_lc corresponds to time[mask], so we need to map nearby_and_masked to the masked indices
+            # Create a mapping: which elements of the masked array correspond to nearby_and_masked?
+            masked_indices = np.where(mask)[0]
+            nearby_masked_indices = np.where(nearby_and_masked)[0]
+
+            # Find positions in the flattened array that correspond to nearby points
+            flatten_lc_positions = np.isin(masked_indices, nearby_masked_indices)
+
+            if np.any(flatten_lc_positions):
+                inj_scatter = np.std(flatten_lc[flatten_lc_positions])
             else:
-                inj_scatter = np.std(flux_err[nearby])
+                # Fallback: use flux_err as scatter estimate
+                inj_scatter = np.std(flux_err[nearby_and_masked])
+
             inj_err = np.sqrt(inj_flux_err**2 + inj_scatter**2)
             injected_snr = get_snr(depth_model, inj_err, duration_model)
         else:
-            injected_snr = np.nan
+            # If no nearby out-of-eclipse out-of-transit points, expand search to 2 days
+            nearby_wider = np.abs(time - inj_time) < 2.0
+            nearby_wider_and_masked = nearby_wider & mask & ~in_transit
+
+            if np.any(nearby_wider_and_masked):
+                inj_flux_err = np.median(flux_err[nearby_wider_and_masked])
+
+                # Map to flatten_lc
+                masked_indices = np.where(mask)[0]
+                nearby_wider_masked_indices = np.where(nearby_wider_and_masked)[0]
+                flatten_lc_positions = np.isin(masked_indices, nearby_wider_masked_indices)
+
+                if np.any(flatten_lc_positions):
+                    inj_scatter = np.std(flatten_lc[flatten_lc_positions])
+                else:
+                    inj_scatter = np.std(flux_err[nearby_wider_and_masked])
+
+                inj_err = np.sqrt(inj_flux_err**2 + inj_scatter**2)
+                injected_snr = get_snr(depth_model, inj_err, duration_model)
+            else:
+                # Last resort: use all out-of-eclipse, out-of-transit points
+                out_of_transit_masked = mask & ~in_transit
+                if np.any(out_of_transit_masked):
+                    inj_flux_err = np.median(flux_err[out_of_transit_masked])
+                    inj_scatter = np.std(flatten_lc)  # Use all detrended data
+                    inj_err = np.sqrt(inj_flux_err**2 + inj_scatter**2)
+                    injected_snr = get_snr(depth_model, inj_err, duration_model)
+                else:
+                    injected_snr = np.nan
 
         # Record results
         self.results['tics'].append(tic)

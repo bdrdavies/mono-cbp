@@ -15,7 +15,10 @@ with open(os.path.join(this_directory, 'requirements.txt'), encoding='utf-8') as
 # Read version
 version = {}
 with open(os.path.join(this_directory, 'mono_cbp', '__init__.py'), encoding='utf-8') as f:
-    exec(f.read(), version)
+    for line in f:
+        if line.startswith('__version__'):
+            version['__version__'] = line.split('=')[1].strip().strip('"').strip("'")
+            break
 
 setup(
     name='mono-cbp',

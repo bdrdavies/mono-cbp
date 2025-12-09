@@ -6,7 +6,7 @@
 #
 
 DATA_DIR="${1:-data}"
-CATALOGUE="catalogues/TEBC_morph_05_P_7_ADJUSTED.csv"
+CATALOGUE="catalogues/TEBC_morph_05_P_7.csv"
 SECTOR_TIMES="catalogues/sector_times.csv"
 OUTPUT_FILE="${2:-results/transit_events.txt}"
 PLOT_DIR="results/vetting_plots"

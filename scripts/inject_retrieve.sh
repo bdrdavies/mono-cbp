@@ -7,7 +7,7 @@
 
 DATA_DIR="${1:-data}"
 MODELS_FILE="catalogues/transit_models.npz"
-CATALOGUE="catalogues/TEBC_morph_05_P_7_ADJUSTED.csv"
+CATALOGUE="catalogues/TEBC_morph_05_P_7.csv"
 OUTPUT_FILE="${2:-results/injection_results.csv}"
 CONFIG_FILE="mono_cbp/config_example.json"
 
