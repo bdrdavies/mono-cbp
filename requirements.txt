@@ -13,3 +13,4 @@ ipykernel>=6.0.0
 oktopus>=0.1.2
 autograd>=1.8.0
 pygam>=0.8.0
+notebook>=6.0.0

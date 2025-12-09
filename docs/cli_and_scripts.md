@@ -1,4 +1,4 @@
-## Command-Line Interface
+## Command-Line Interface (CLI)
 
 The package provides both a dedicated CLI tool and convenient shell scripts for batch processing.
 
@@ -8,21 +8,26 @@ After installation, the `mono-cbp` command is available system-wide:
 
 ```bash
 # Run the complete pipeline
+# --catalogue and --data-dir are required
 mono-cbp run \
   --catalogue catalogues/TEBC_morph_05_P_7.csv \
-  --data-dir ./test_data \
+  --data-dir ./data \
   --output-dir ./results \
   --sector-times catalogues/sector_times.csv
+  --tebc
 
 # Mask eclipses only (modifies files in-place)
+# --catalogue and --data-dir are required
 mono-cbp mask-eclipses \
   --catalogue catalogues/TEBC_morph_05_P_7.csv \
-  --data-dir ./test_data
+  --data-dir ./data
+  --tebc
 
 # Find transits only
+# --catalogue and --data-dir are required
 mono-cbp find-transits \
   --catalogue catalogues/TEBC_morph_05_P_7.csv \
-  --data-dir ./test_data \
+  --data-dir ./data \
   --output transit_events.txt \
   --plot-dir ./plots \
   --threshold 4.0 \

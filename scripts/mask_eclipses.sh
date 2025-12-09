@@ -8,7 +8,7 @@
 
 CATALOGUE="${1:-catalogues/TEBC_morph_05_P_7.csv}"
 DATA_DIR="${2:-data}"
-CONFIG_FILE="mono_cbp/config_example.json"
+CONFIG_FILE="examples/config_example.json"
 
 echo "=========================================="
 echo "Eclipse Masking"

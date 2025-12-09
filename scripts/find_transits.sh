@@ -11,7 +11,7 @@ SECTOR_TIMES="catalogues/sector_times.csv"
 OUTPUT_FILE="${2:-results/transit_events.txt}"
 PLOT_DIR="results/vetting_plots"
 SNIPPETS_DIR="results/event_snippets"
-CONFIG_FILE="mono_cbp/config_example.json"
+CONFIG_FILE="examples/config_example.json"
 
 # Configuration (can be overridden by config file)
 MAD_THRESHOLD=3.0

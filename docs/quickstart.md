@@ -19,8 +19,6 @@ project/
     └── sector_times.csv
 ```
 
-#### Catalogue Format
-
 `catalogue.csv` should contain:
 
 ```csv
@@ -29,7 +27,7 @@ tess_id,period,bjd0,sectors,prim_pos,prim_width,sec_pos,sec_width
 ```
 
 - `tess_id`: TIC ID of the target
-- `period`: Priod of the eclipsing binary
+- `period`: Period of the eclipsing binary
 - `bjd0`: Reference epoch (time of mid-eclipse for primary eclipse)
 - `sectors`: TESS sectors that the target was observed in. Note that this column is only necessary if downloading the data from MAST with `mono_cbp.utils.catalogue_to_lc_files`.
 - `prim_pos`: Position of the primary eclipse in phase space (should be very close to either 0 or 1)

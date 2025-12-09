@@ -247,8 +247,10 @@ masker.mask_file(
 Mask eclipses in a single light curve file. Loads light curve data (time, flux, flux_err) and optionally phase. If phase is not provided, it is calculated from the catalogue ephemeris. Computes eclipse masks for primary and secondary eclipses and saves the results with an appended eclipse_mask column.
 
 **Input file format:**
-- **.npz**: Must contain 'time', 'flux', 'flux_err' keys. Optionally 'phase' and 'eclipse_mask'.
-- **.txt**: Must have columns for time, flux, flux_err (and optionally phase, eclipse_mask). Phase can be calculated from ephemeris if not provided.
+- **.npz**: Must have columns for 'time', 'flux', 'flux_err'. Optionally 'phase' and 'eclipse_mask'.
+- **.txt**: Must have columns for 'time', 'flux', 'flux_err'. Optionally 'phase' and 'eclipse_mask'.
+
+In both cases, 'phase' and 'eclipse_mask' can be calculated from the input catalogue.
 
 **Parameters:**
 - `file` (str): Name of file to process (including file extension). Filename should be in format 'TIC_<TICID>_<sector>.<ext>'
@@ -474,7 +476,7 @@ This method fits four models to the event data:
 1. **Transit model**: Exoplanet transit using [exoplanet](https://docs.exoplanet.codes/en/latest/)
 2. **Sinusoidal model**: Sinusoidal variation
 3. **Linear model**: Linear trend
-4. **Step function model**: Step function. Performs a 2nd order polynomial fit across the largest flux jump, if the jump is > 3 sigma oulier
+4. **Step function model**: Step function. Performs a 2nd order polynomial fit across the largest flux jump, if the jump is > 3 sigma outlier
 
 ##### `compare_events()`
 ```python
@@ -512,7 +514,7 @@ Compare models for multiple events (batch processing).
 - `rmse_linear` (float): RMSE for linear model
 - `rmse_step` (float): RMSE for step function model
 
-**Behavior:**
+**Behaviour:**
 - Processes events in batches with progress logging (every 10 events)
 - Failed events are logged and skipped
 - Saves results to CSV if `output_dir` is specified
@@ -567,7 +569,7 @@ Run injection-retrieval tests for all transit models in `transit_models.npz`. Te
 - Recovery status (boolean)
 - Recovered parameters (time, depth, duration, SNR) if detected, NaN otherwise
 
-**Behavior:**
+**Behaviour:**
 - Light curves are inverted to ensure detected events are injected transits, not real signals
 - Each test uses a randomly selected injection time from the available light curve
 - Per-model recovery statistics are automatically saved to `{output_file}_stats.csv`
@@ -664,7 +666,7 @@ time_binned, flux_binned, flux_err_binned = bin_to_long_cadence(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]
 ```
 
-Bin short-cadence TESS data to 30-minute long cadence using `lightkurve`.
+Bin short-cadence TESS data to 30-minute long cadence using [lightkurve](https://lightkurve.github.io/lightkurve/).
 
 **Parameters:**
 - `time` (np.ndarray): Time values to bin
@@ -889,7 +891,7 @@ normalised_flux = poly_normalise(
 
 Normalises the flux using a polynomial fit.
 
-Used for reducing the half-sector periodicity from TESS data before calculating the Lomb-Scargle periodogram.
+Used for reducing the half-sector periodicity from TESS data before calculating the [Lomb-Scargle periodogram](https://docs.astropy.org/en/stable/timeseries/lombscargle.html).
 
 **Parameters:**
 - `time` (np.ndarray): Time values
@@ -909,7 +911,7 @@ period = get_period_max_power(
 ) -> float
 ```
 
-Calculates the period with maximum power from the Lomb-Scargle periodogram.
+Calculates the period with maximum power from the [Lomb-Scargle periodogram](https://docs.astropy.org/en/stable/timeseries/lombscargle.html).
 
 **Parameters:**
 - `time` (np.ndarray): Time values
@@ -929,7 +931,7 @@ fap = get_fap(
 ) -> float
 ```
 
-Calculates the false alarm probability of the peak of the Lomb-Scargle periodogram.
+Calculates the false alarm probability of the peak of the [Lomb-Scargle periodogram](https://docs.astropy.org/en/stable/timeseries/lombscargle.html).
 
 **Parameters:**
 - `time` (np.ndarray): Time values
@@ -956,7 +958,7 @@ peaks, meta = monofind(
 ) -> tuple
 ```
 
-Find individual threshold crossing events (TCEs) in timeseries data based on the MAD of the light curve.
+Find individual threshold crossing events (TCEs) in timeseries data based on the Median Absolute Deviation (MAD) of the light curve.
 
 **Parameters:**
 - `time` (np.ndarray): Time values of the light curve
@@ -1271,7 +1273,7 @@ Load transit models from an .npz file.
 
 ## Configuration
 
-The mono-cbp package uses a hierarchical configuration system to control pipeline behavior. Configuration can be provided when initialising pipeline components or by using the configuration utilities.
+The mono-cbp package uses a hierarchical configuration system to control pipeline behaviour. Configuration can be provided when initialising pipeline components or by using the configuration utilities.
 
 ### Configuration Functions
 
@@ -1308,7 +1310,7 @@ Merge user configuration with default configuration.
 
 **Returns:** Merged configuration dictionary
 
-**Behavior:**
+**Behaviour:**
 - Recursively merges nested dictionaries
 - User values override default values
 - Creates a deep copy to prevent mutation of inputs

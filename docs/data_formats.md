@@ -40,15 +40,15 @@ The code preferentially uses `*_2g` values, falling back to `*_pf` only if 2g va
 
 Light curves should be in one of two formats with the following naming convention:
 
-**Filename convention:** `TIC_{tic_id}_{sector}.{txt|npz}`
+**Filename convention:** `TIC_{tic_id}_{sector}.txt` or `TIC_{tic_id}_{sector}.npz`
 - Sector is always 2 digits with leading zeros (e.g., `06`, `10`)
 - Examples: `TIC_260128333_06.txt`, `TIC_146530594_09.npz`
 
 #### Format 1: Text files (`.txt`)
 
-Space or tab-delimited ASCII file with header row.
+Space-delimited text file. Can have a header, but doesn't need one. The columns, however, must have the following order:
 
-**Header:** `TIME FLUX FLUX_ERR PHASE ECL_MASK`
+`TIME FLUX FLUX_ERR PHASE ECL_MASK`
 
 **Columns:**
 1. `TIME`: BJD - 2457000
@@ -127,7 +127,7 @@ TIC SECTOR TIME PHASE DEPTH DURATION SNR SKYE_FLAG
 | `SNR` | Signal-to-noise ratio | Rounded to 2 decimals |
 | `WIN_LEN_MAX_SNR` | Biweight window length with max SNR | Days (cb method only) |
 | `DET_DEPENDENCE` | Detrending dependence flag | 0=robust, 1=dependent (cb method only) |
-| `SKYE_FLAG` | Systematic artifact flag | 1=flagged (if sector_times provided) |
+| `SKYE_FLAG` | Systematic artefact flag | 1=flagged (if sector_times provided) |
 
 **Example:**
 ```

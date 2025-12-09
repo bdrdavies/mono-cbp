@@ -1,13 +1,15 @@
 # Configuration Guide
 
-Complete guide to configuring mono-cbp.
+Complete guide to configuring `mono-cbp`.
 
 ## Overview
 
-mono-cbp uses a hierarchical configuration system:
+`mono-cbp` uses a hierarchical configuration system:
 1. Default values defined in `mono_cbp/config/defaults.py`
 2. User overrides passed as dictionaries
 3. Command-line arguments (for CLI usage)
+
+Note that `config` need not be defined in your code. If you don't define it, `mono-cbp` will use the 
 
 ## Configuration Structure
 
@@ -60,7 +62,8 @@ config = {
 
 - `edge_cutoff` (float, default: 0.0)
   - Timespan of flux values to exclude at the edges of data gaps
-  - In units of days 
+  - Photometry near data gaps can exhibit strong systematic trends, which the detrending often doesn't deal with very well. To reduce false positives, it may be helpful to "cut off" the data near the edges of data gaps.
+  - In units of days
 
 - `mad_threshold` (float, default: 3.0)
   - Multiplier for Median Absolute Deviation (MAD) threshold for event detection
@@ -73,7 +76,7 @@ config = {
 
 - `generate_vetting_plots` (bool, default: False)
   - Whether to create diagnostic plots for each detection
-  - Useful for visual inspection but slow for large datasets
+  - Useful for visual inspection but can be slow for large datasets
 
 - `generate_skye_plots` (bool, default: False)
   - Whether to generate per-sector Skye metric plots
@@ -237,7 +240,7 @@ config = {
 
 - `n_injections` (int, default: 1000)
   - Total number of synthetic transits to inject for each transit model
-  - More injections = better statistics but slower
+  - More injections = better statistics but increases computation time
 
 ## Complete Configuration Example
 

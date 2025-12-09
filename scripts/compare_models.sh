@@ -7,7 +7,7 @@
 
 EVENT_DIR="${1:-results/event_snippets}"
 OUTPUT_FILE="${2:-results/classifications.csv}"
-CONFIG_FILE="mono_cbp/config_example.json"
+CONFIG_FILE="examples/config_example.json"
 
 echo "=========================================="
 echo "Model Comparison"

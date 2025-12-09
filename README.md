@@ -43,6 +43,12 @@ conda activate mono-cbp
 
 This installs the package in editable mode and creates the `mono-cbp` command-line tool.
 
+To check that the installation has been successful, you can run the following 
+
+```bash
+python -c "import mono_cbp; print(mono_cbp.__version__)"
+```
+
 ### Dependencies
 
 See [requirements.txt](requirements.txt) for the complete dependency list and exact versions.
