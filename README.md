@@ -23,9 +23,29 @@ A Python package for detecting circumbinary planets in TESS eclipsing binary lig
 
 ### Requirements
 
-- Python 3.8 or higher (tested most rigourously with Python 3.9)
+- Python 3.8 or higher (tested most rigorously with Python 3.9)
+
+### From PyPI (Recommended)
+
+The easiest way to install `mono-cbp` is from PyPI:
+
+```bash
+pip install mono-cbp
+```
+
+It is advisable to install `mono-cbp` into a Python environment using your favourite package manager, e.g. for `conda`:
+
+```bash
+conda create --name mono-cbp python=3.9
+conda activate mono-cbp
+pip install mono-cbp
+```
+
+This installs the package and creates the `mono-cbp` command-line tool.
 
 ### From Source
+
+For development or to use the latest unreleased features:
 
 ```bash
 git clone https://github.com/bdrdavies/mono-cbp.git
@@ -33,30 +53,30 @@ cd mono-cbp
 pip install -e .
 ```
 
-It is advisable to install `mono-cbp` into a Python environment using your favourite package manager, e.g. for `conda`:
+This installs the package in editable mode.
 
-```bash
-conda create --name mono-cbp
-conda activate mono-cbp
-# Install from source as above
-```
+### Verify Installation
 
-This installs the package in editable mode and creates the `mono-cbp` command-line tool.
-
-To check that the installation has been successful, you can run the following 
+To check that the installation has been successful:
 
 ```bash
 python -c "import mono_cbp; print(mono_cbp.__version__)"
+mono-cbp --help
 ```
 
 ### Dependencies
 
-See [requirements.txt](requirements.txt) for the complete dependency list and exact versions.
+All dependencies are automatically installed when you install `mono-cbp`.
+
+See [pyproject.toml](pyproject.toml) or [requirements.txt](requirements.txt) for the complete dependency list and version constraints.
 
 ### Troubleshooting Installation
 
-- `scipy>=1.13.0` may cause compatibility issues with PyMC 5.12.0; use `scipy<1.13.0`
-- PyTensor version must match PyMC 5.12.0 requirements (2.19.0)
+If you encounter issues:
+
+- **Python version**: The package has been tested most thoroughly with Python 3.9.
+- **Dependency conflicts**: The package pins specific versions of PyMC, ArviZ, and Bokeh for compatibility. If you have conflicts, create a fresh environment
+- **Import errors**: If you see errors related to `bokeh` or `arviz`, ensure you have the correct versions installed (see [pyproject.toml](pyproject.toml))
 
 ## Examples & Tutorials
 

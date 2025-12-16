@@ -14,8 +14,8 @@ from .model_comparison import ModelComparator
 from .injection_retrieval import TransitInjector
 from .pipeline import MonoCBPPipeline
 
-__version__ = "0.1.0"
-__author__ = "Ben Davies"
+__version__ = "0.1.2"
+__author__ = "Benjamin Davies"
 __all__ = [
     "EclipseMasker",
     "TransitFinder",

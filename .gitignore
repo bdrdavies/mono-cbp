@@ -155,3 +155,6 @@ Temporary Items
 
 # Local configuration
 config_local.py
+
+# Backup files
+*.bak
