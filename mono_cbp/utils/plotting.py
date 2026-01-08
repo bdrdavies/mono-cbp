@@ -167,8 +167,13 @@ def plot_event(
     xbound = axs[0].get_xbound()
     idx = np.where(np.logical_and(time[mask]>=xbound[0], time[mask]<=xbound[1]))
     f_new = flat_flux[idx]
-    f_max, f_min = np.max(f_new), np.min(f_new)
-    axs[0].set_ylim(f_min-0.001, f_max+0.001)
+    # Filter out NaN and Inf values
+    f_new_valid = f_new[np.isfinite(f_new)]
+    if len(f_new_valid) > 0:
+        f_max, f_min = np.max(f_new_valid), np.min(f_new_valid)
+        axs[0].set_ylim(f_min-0.001, f_max+0.001)
+    else:
+        logger.warning(f"No valid flux values found in zoom range for event at {event_time}")
     axs[0].scatter(event_time, axs[0].get_ylim()[0]+0.05*(axs[0].get_ylim()[1]-axs[0].get_ylim()[0]), s=50, c='blue', marker=6)
     axs[0].text(
         0.84, 0.07,
@@ -192,8 +197,13 @@ def plot_event(
     xbound = axs[1].get_xbound()
     idx = np.where(np.logical_and(time[mask]>=xbound[0], time[mask]<=xbound[1]))
     f_new = flat_flux[idx]
-    f_max, f_min = np.max(f_new), np.min(f_new)
-    axs[1].set_ylim(f_min-0.001, f_max+0.001)
+    # Filter out NaN and Inf values
+    f_new_valid = f_new[np.isfinite(f_new)]
+    if len(f_new_valid) > 0:
+        f_max, f_min = np.max(f_new_valid), np.min(f_new_valid)
+        axs[1].set_ylim(f_min-0.001, f_max+0.001)
+    else:
+        logger.warning(f"No valid flux values found in full detrended range for event at {event_time}")
     axs[1].scatter(time[mask][peaks], (axs[1].get_ylim()[0]+0.05*(axs[1].get_ylim()[1]-axs[1].get_ylim()[0]))*np.ones(len(time[mask][peaks])), s=50, c='gray', marker=6)
     axs[1].scatter(event_time, axs[1].get_ylim()[0]+0.05*(axs[1].get_ylim()[1]-axs[1].get_ylim()[0]), s=50, c='blue', marker=6)
 
