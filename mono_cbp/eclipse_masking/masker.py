@@ -227,7 +227,8 @@ class EclipseMasker:
         Skips files that cannot be processed (e.g., missing TIC ID in catalogue, unsupported format).
 
         Args:
-            force (bool, optional): If True, recalculate mask even if it already exists. Defaults to False.
+            force (bool, optional): If True, recalculate phase and mask even if they already exist,
+                using the catalogue ephemeris (period, bjd0). Defaults to False.
         """
         files = [f for f in os.listdir(self.data_dir) if f.endswith('.txt') or f.endswith('.npz')]
         logger.info(f"Processing {len(files)} files in {self.data_dir}")
@@ -247,7 +248,8 @@ class EclipseMasker:
 
         Args:
             file (str): Filename (not full path) to process. Filename should be in format 'TIC_<TICID>_<sector>.<ext>'
-            force (bool, optional): If True, recalculate mask even if it already exists. Defaults to False.
+            force (bool, optional): If True, recalculate phase and mask even if they already exist,
+                using the catalogue ephemeris (period, bjd0). Defaults to False.
 
         Raises:
             FileNotFoundError: If file does not exist
@@ -276,8 +278,8 @@ class EclipseMasker:
         if row is None:
             raise ValueError(f"TIC {tic_id} not found in catalogue.")
 
-        # Calculate phase from ephemeris if not provided in input file
-        if phase is None:
+        # Calculate phase from ephemeris if not provided in input file, or if force=True
+        if phase is None or force:
             phase = time_to_phase(time, row['period'], row['bjd0'])
 
         # Check if mask already exists
