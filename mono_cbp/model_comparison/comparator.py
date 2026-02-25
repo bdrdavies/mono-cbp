@@ -2,10 +2,8 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-import pymc as pm
-import exoplanet as xo
-from pymc.model import Model
-import pytensor.tensor as pyt
+import batman
+import lmfit
 import os
 import scipy.stats as stats
 import warnings
@@ -111,44 +109,33 @@ class ModelComparator:
 
         # Fit models
         logger.debug("Fitting transit model...")
-        trace_transit, n_params_transit = self._fit_transit_model(
+        q50_transit, transit_model_err, n_params_transit = self._fit_transit_model(
             time, flux, flux_err, event_time, event_width, event_depth
         )
 
         logger.debug("Fitting sinusoidal model...")
-        trace_sinusoidal, n_params_sinusoidal = self._fit_sinusoidal_model(
+        q50_sinusoidal, sinusoidal_model_err, n_params_sinusoidal = self._fit_sinusoidal_model(
             time, flux, flux_err
         )
 
         logger.debug("Fitting linear model...")
-        trace_linear, n_params_linear = self._fit_linear_model(
+        q50_linear, linear_model_err, n_params_linear = self._fit_linear_model(
             time, flux, flux_err
         )
 
         logger.debug("Fitting step model...")
-        trace_step, n_params_step = self._fit_step_model(
+        q50_step, step_model_err, n_params_step = self._fit_step_model(
             time, flux, flux_err
         )
 
-        # Extract posterior samples
-        q16_transit, q50_transit, q84_transit = np.percentile(
-            trace_transit.posterior["__light_curve"].values, [16, 50, 84], axis=(0, 1)
-        )
-        q16_sinusoidal, q50_sinusoidal, q84_sinusoidal = np.percentile(
-            trace_sinusoidal.posterior["__sinusoid"].values, [16, 50, 84], axis=(0, 1)
-        )
-        q16_linear, q50_linear, q84_linear = np.percentile(
-            trace_linear.posterior["__linear"].values, [16, 50, 84], axis=(0, 1)
-        )
-        q16_step, q50_step, q84_step = np.percentile(
-            trace_step.posterior["__step"].values, [16, 50, 84], axis=(0, 1)
-        )
-
-        # Define model uncertainties
-        transit_model_err = abs(q84_transit - q16_transit) / 2
-        sinusoidal_model_err = abs(q84_sinusoidal - q16_sinusoidal) / 2
-        linear_model_err = abs(q84_linear - q16_linear) / 2
-        step_model_err = abs(q84_step - q16_step) / 2
+        q16_transit = q50_transit - transit_model_err
+        q84_transit = q50_transit + transit_model_err
+        q16_sinusoidal = q50_sinusoidal - sinusoidal_model_err
+        q84_sinusoidal = q50_sinusoidal + sinusoidal_model_err
+        q16_linear = q50_linear - linear_model_err
+        q84_linear = q50_linear + linear_model_err
+        q16_step = q50_step - step_model_err
+        q84_step = q50_step + step_model_err
 
         # Calculate total errors
         transit_total_err = np.sqrt(flux_err**2 + transit_model_err**2)
@@ -316,147 +303,173 @@ class ModelComparator:
         return df
 
     def _fit_transit_model(self, time, flux, flux_err, event_time, event_width, event_depth):
-        """Fit transit model to data."""
-        with Model():
-            mean = pm.Normal("mean", mu=1.0, sigma=0.01)
-            # Transit mid-time prior
-            t0 = pm.Normal("t0", mu=event_time, sigma=0.05)
+        """Fit transit model using batman + lmfit."""
+        PERIOD = 100.0  # fixed, arbitrary - must exceed snippet duration
 
-            # Limb-darkening coefficients prior
-            u = xo.distributions.quad_limb_dark("u", initval=np.array([0.3, 0.2]))
+        rp_init = np.sqrt(max(event_depth, 1e-6))
+        # For b=0: T ~ per*(1+rp)/(pi*a) => a ~ per*(1+rp)/(pi*T)
+        a_init = max(PERIOD * (1.0 + rp_init) / (np.pi * event_width), 3.0)
 
-            # Event depth prior
-            depth = pm.Normal("event_depth", mu=event_depth, sigma=event_depth/2)
+        # Create batman model once; update params in-place during fitting
+        bp = batman.TransitParams()
+        bp.t0 = event_time
+        bp.per = PERIOD
+        bp.rp = rp_init
+        bp.a = a_init
+        bp.inc = 90.0
+        bp.ecc = 0.0
+        bp.w = 90.0
+        bp.u = [0.3, 0.2]
+        bp.limb_dark = "quadratic"
+        bat_model = batman.TransitModel(bp, time)
 
-            # Impact parameter prior
-            b = pm.Uniform("b", lower=0, upper=1)
+        # `t` is the independent variable passed by lmfit; bat_model already
+        # holds the same time array so it is not used directly in the body.
+        def transit_func(t, t0, rp, a, inc, u1, u2, mean):
+            bp.t0 = t0
+            bp.rp = abs(rp)  # rp must be > 0
+            bp.a = abs(a)    # a must be > 1
+            bp.inc = inc
+            bp.u = [u1, u2]
+            # batman returns 1 out-of-transit; mean shifts the baseline
+            return bat_model.light_curve(bp) + (mean - 1.0)
 
-            # Approximate radius ratio from transit depth
-            ror = xo.LimbDarkLightCurve(u).get_ror_from_approx_transit_depth(depth, b)
+        out_of_transit = ~((time > event_time - event_width / 2) &
+                           (time < event_time + event_width / 2))
+        baseline = np.median(flux[out_of_transit]) if out_of_transit.any() else np.median(flux)
 
-            # Duration prior
-            duration = pm.Normal("duration", mu=event_width, sigma=0.1)
+        lm = lmfit.Model(transit_func, independent_vars=['t'])
+        params = lm.make_params(
+            t0=dict(value=event_time,
+                    min=event_time - event_width, max=event_time + event_width),
+            rp=dict(value=rp_init, min=0.001, max=0.5),
+            a=dict(value=a_init, min=2.0, max=1000.0),
+            inc=dict(value=90.0, vary=False),
+            u1=dict(value=0.3, vary=False),
+            u2=dict(value=0.2, vary=False),
+            mean=dict(value=baseline, min=0.8, max=1.2),
+        )
 
-            # Orbit (arbitrary period longer than snippet)
-            period = 10
-            orbit = xo.orbits.SimpleTransitOrbit(period=period, duration=duration, t0=t0, ror=ror, b=b)
+        result = lm.fit(flux, params, t=time, weights=1.0/flux_err,
+                        method='least_squares')
 
-            # Light curve
-            light_curve = (xo.LimbDarkLightCurve(u).get_light_curve(
-                orbit=orbit, r=ror, t=time)[:, 0] + mean)
+        best_fit = result.best_fit
+        try:
+            uncertainty = result.eval_uncertainty(sigma=1)
+            if not np.isfinite(uncertainty).all():
+                raise ValueError("non-finite values in covariance matrix")
+        except Exception as e:
+            logger.warning(f"Transit fit: could not compute uncertainty: {e}")
+            uncertainty = np.zeros_like(best_fit)
 
-            pm.Deterministic("__light_curve", light_curve)
-            pm.Normal("obs_transit", mu=light_curve, sigma=flux_err, observed=flux)
-
-            trace = pm.sample(
-                tune=self.model_config['tune'],
-                draws=self.model_config['draws'],
-                cores=self.model_config['cores'],
-                chains=self.model_config['chains'],
-                init="adapt_full",
-                target_accept=self.model_config['target_accept'],
-                progressbar=False
-            )
-
-        return trace, 8  # 8 parameters
+        return best_fit, uncertainty, 4  # 4 free parameters (t0, rp, a, mean)
 
     def _fit_sinusoidal_model(self, time, flux, flux_err):
         """Fit sinusoidal model to data."""
-        with Model():
-            mean = pm.Normal("mean", mu=1.0, sigma=0.01)
-            amplitude = pm.Normal("amplitude", mu=(np.max(flux) - np.min(flux)), sigma=0.1)
-            phase = pm.Uniform("phase", lower=0, upper=2 * np.pi)
-            frequency = pm.Uniform("frequency", lower=1/(time[-1]-time[0]), upper=1/((time[-1]-time[0])*0.5))
+        T = time[-1] - time[0]
 
-            sinusoid = amplitude * pm.math.sin(2 * np.pi * frequency * time + phase) + mean
+        def sinusoid_func(t, amplitude, frequency, phase, mean):
+            return amplitude * np.sin(2 * np.pi * frequency * t + phase) + mean
 
-            pm.Deterministic("__sinusoid", sinusoid)
-            pm.Normal("obs_sin", mu=sinusoid, sigma=flux_err, observed=flux)
+        lm = lmfit.Model(sinusoid_func)
+        params = lm.make_params(
+            amplitude=dict(value=0.5 * (np.max(flux) - np.min(flux)), min=0.0),
+            # Period constrained between 0.5*T and T (one or two cycles in snippet)
+            frequency=dict(value=1.5 / T, min=1.0 / T, max=2.0 / T),
+            # Phase unconstrained: bounding a circular parameter causes boundary artefacts
+            phase=dict(value=0.0),
+            mean=dict(value=np.median(flux)),
+        )
 
-            trace = pm.sample(
-                tune=self.model_config['tune'],
-                draws=self.model_config['draws'],
-                cores=self.model_config['cores'],
-                chains=self.model_config['chains'],
-                init="adapt_full",
-                target_accept=self.model_config['target_accept'],
-                progressbar=False
-            )
+        result = lm.fit(flux, params, t=time, weights=1.0 / flux_err,
+                        method='least_squares')
 
-        return trace, 4  # 4 parameters
+        best_fit = result.best_fit
+        try:
+            uncertainty = result.eval_uncertainty(sigma=1)
+            if not np.isfinite(uncertainty).all():
+                raise ValueError("non-finite values in covariance matrix")
+        except Exception as e:
+            logger.warning(f"Sinusoidal fit: could not compute uncertainty: {e}")
+            uncertainty = np.zeros_like(best_fit)
+
+        return best_fit, uncertainty, 4  # amplitude, frequency, phase, mean
 
     def _fit_linear_model(self, time, flux, flux_err):
         """Fit linear model to data."""
-        with Model():
-            coeff_guess = np.polyfit(time, flux, 1)
-            coeff_0 = pm.Normal("coeff_1", mu=coeff_guess[1], sigma=0.1)
-            coeff_1 = pm.Normal("coeff_2", mu=coeff_guess[0], sigma=0.1)
-            linear = coeff_0 + coeff_1 * time
+        def linear_func(t, slope, intercept):
+            return slope * t + intercept
 
-            pm.Deterministic("__linear", linear)
-            pm.Normal("obs_linear", mu=linear, sigma=flux_err, observed=flux)
+        lm = lmfit.Model(linear_func)
+        params = lm.make_params(
+            slope=dict(value=0.0),
+            intercept=dict(value=np.median(flux)),
+        )
 
-            trace = pm.sample(
-                tune=self.model_config['tune'],
-                draws=self.model_config['draws'],
-                cores=self.model_config['cores'],
-                chains=self.model_config['chains'],
-                init="adapt_full",
-                target_accept=self.model_config['target_accept'],
-                progressbar=False
-            )
+        result = lm.fit(flux, params, t=time, weights=1.0 / flux_err,
+                        method='least_squares')
 
-        return trace, 2  # 2 parameters
+        best_fit = result.best_fit
+        try:
+            uncertainty = result.eval_uncertainty(sigma=1)
+            if not np.isfinite(uncertainty).all():
+                raise ValueError("non-finite values in covariance matrix")
+        except Exception as e:
+            logger.warning(f"Linear fit: could not compute uncertainty: {e}")
+            uncertainty = np.zeros_like(best_fit)
+
+        return best_fit, uncertainty, 2  # slope, intercept
 
     def _fit_step_model(self, time, flux, flux_err):
         """Fit step/polynomial model to data."""
-        with Model():
-            # Determine if there's a significant step
-            flux_diff = np.diff(flux)
-            max_diff_idx = np.argmax(abs(flux_diff))
-            step_time = time[max_diff_idx]
-            diff_std = np.std(flux_diff)
+        flux_diff = np.diff(flux)
+        max_diff_idx = np.argmax(abs(flux_diff))
+        step_time = time[max_diff_idx]
+        diff_std = np.std(flux_diff)
 
-            if abs(flux_diff[max_diff_idx]) > 3 * diff_std:
-                # Fit piecewise quadratic
-                coeff_guess_1 = np.polyfit(time[time <= step_time], flux[time <= step_time], 2)
-                coeff_guess_2 = np.polyfit(time[time > step_time], flux[time > step_time], 2)
+        flux_mean = np.median(flux)
 
-                coeff_01 = pm.Normal("coeff_01", mu=coeff_guess_1[2], sigma=0.1)
-                coeff_11 = pm.Normal("coeff_11", mu=coeff_guess_1[1], sigma=0.1)
-                coeff_21 = pm.Normal("coeff_21", mu=coeff_guess_1[0], sigma=0.1)
-                polynomial_1 = coeff_01 + coeff_11 * time[time <= step_time] + coeff_21 * time[time <= step_time]**2
+        if abs(flux_diff[max_diff_idx]) > 3 * diff_std:
+            # Piecewise quadratic: different polynomial each side of step_time
+            def step_func(t, c01, c11, c21, c02, c12, c22):
+                return np.where(
+                    t <= step_time,
+                    c01 + c11 * t + c21 * t**2,
+                    c02 + c12 * t + c22 * t**2,
+                )
 
-                coeff_02 = pm.Normal("coeff_02", mu=coeff_guess_2[2], sigma=0.1)
-                coeff_12 = pm.Normal("coeff_12", mu=coeff_guess_2[1], sigma=0.1)
-                coeff_22 = pm.Normal("coeff_22", mu=coeff_guess_2[0], sigma=0.1)
-                polynomial_2 = coeff_02 + coeff_12 * time[time > step_time] + coeff_22 * time[time > step_time]**2
-
-                step = pyt.concatenate([polynomial_1, polynomial_2])
-                n_params = 6
-            else:
-                # Fit simple quadratic
-                coeff_guess = np.polyfit(time, flux, 2)
-                coeff_0 = pm.Normal("coeff_0", mu=coeff_guess[2], sigma=0.1)
-                coeff_1 = pm.Normal("coeff_1", mu=coeff_guess[1], sigma=0.1)
-                coeff_2 = pm.Normal("coeff_2", mu=coeff_guess[0], sigma=0.1)
-                step = coeff_0 + coeff_1 * time + coeff_2 * time**2
-                n_params = 3
-
-            pm.Deterministic("__step", step)
-            pm.Normal("obs_step", mu=step, sigma=flux_err, observed=flux)
-
-            trace = pm.sample(
-                tune=self.model_config['tune'],
-                draws=self.model_config['draws'],
-                cores=self.model_config['cores'],
-                chains=self.model_config['chains'],
-                init="adapt_full",
-                target_accept=self.model_config['target_accept'],
-                progressbar=False
+            lm = lmfit.Model(step_func)
+            params = lm.make_params(
+                c01=dict(value=flux_mean), c11=dict(value=0.0), c21=dict(value=0.0),
+                c02=dict(value=flux_mean), c12=dict(value=0.0), c22=dict(value=0.0),
             )
+            n_params = 6
+        else:
+            # Simple quadratic
+            def step_func(t, c0, c1, c2):
+                return c0 + c1 * t + c2 * t**2
 
-        return trace, n_params
+            lm = lmfit.Model(step_func)
+            params = lm.make_params(
+                c0=dict(value=flux_mean),
+                c1=dict(value=0.0),
+                c2=dict(value=0.0),
+            )
+            n_params = 3
+
+        result = lm.fit(flux, params, t=time, weights=1.0 / flux_err,
+                        method='least_squares')
+
+        best_fit = result.best_fit
+        try:
+            uncertainty = result.eval_uncertainty(sigma=1)
+            if not np.isfinite(uncertainty).all():
+                raise ValueError("non-finite values in covariance matrix")
+        except Exception as e:
+            logger.warning(f"Step fit: could not compute uncertainty: {e}")
+            uncertainty = np.zeros_like(best_fit)
+
+        return best_fit, uncertainty, n_params
 
     def _classify_event(self, aic_arr, aic_order, rmse_transit, rmse_sinusoidal, rmse_linear, rmse_step, rmse_threshold):
         """Classify event based on AIC and RMSE.

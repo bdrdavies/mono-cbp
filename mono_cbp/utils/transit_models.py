@@ -1,8 +1,7 @@
 """Transit model generation utilities for injection-retrieval testing."""
 
 import numpy as np
-import pymc as pm
-import exoplanet as xo
+import batman
 
 
 def create_transit_models(
@@ -32,7 +31,7 @@ def create_transit_models(
                                      Defaults to (-1, 1).
         cadence_minutes (float, optional): Observation cadence in minutes. Defaults to 30.
         impact_parameter (float, optional): Impact parameter (0 = center of limb). Defaults to 0.0.
-        period (float, optional): Orbital period in days (arbitrary, >2×duration). Defaults to 10.0.
+        period (float, optional): Orbital period in days (arbitrary, >2xduration). Defaults to 10.0.
         limb_dark_coeffs (tuple, optional): Quadratic limb darkening coefficients (u1, u2).
                                            Defaults to (0.3, 0.2).
 
@@ -40,7 +39,7 @@ def create_transit_models(
         dict: Dictionary containing:
             - 'time': Time array (same for all models)
             - 'models': List of transit model dictionaries, each containing:
-                - 'flux': Normalized flux array
+                - 'flux': Delta flux array (0 outside transit, negative during transit)
                 - 'depth': Transit depth
                 - 'duration': Transit duration in days
                 - 'impact_parameter': Impact parameter
@@ -67,44 +66,52 @@ def create_transit_models(
     # Store transit models
     models = []
 
+    u1, u2 = limb_dark_coeffs
+    b = impact_parameter
+    R_star = 1.0  # Stellar radius in units of solar radii (matches exoplanet convention)
+
+    # Limb darkening normalisation (integrated stellar flux, matches exoplanet's f0)
+    f0 = 1.0 - u1 / 3.0 - u2 / 6.0
+
     # Loop over grid
     for depth in depths:
         for duration in durations:
-            with pm.Model():
-                # Approximate the radius ratio based on the transit depth
-                ror = xo.LimbDarkLightCurve(limb_dark_coeffs).get_ror_from_approx_transit_depth(
-                    depth, impact_parameter
-                )
+            # Compute ror from depth using the same approximation as exoplanet's
+            # get_ror_from_approx_transit_depth:  ror = sqrt(depth * f0 / f)
+            # where f = limb darkening intensity at impact parameter b
+            arg = 1.0 - np.sqrt(max(0.0, 1.0 - b**2))
+            f = 1.0 - u1 * arg - u2 * arg**2
+            ror = np.sqrt(depth * f0 / f)
 
-                # Obtain simple transit orbit
-                orbit = xo.orbits.SimpleTransitOrbit(
-                    period=period,
-                    duration=duration,
-                    t0=0,
-                    ror=ror,
-                    b=impact_parameter
-                )
+            # Compute semi-major axis and inclination from transit duration.
+            # Winn (2010): T = (P/pi) * arcsin(R_star/a * sqrt((1+k)^2 - b^2) / sin_inc)
+            # with b = a*cos_inc/R_star and R_star = 1.0 (stellar radii).
+            a_sin_inc = R_star * np.sqrt((1.0 + ror)**2 - b**2) / np.sin(np.pi * duration / period)
+            a = np.sqrt(a_sin_inc**2 + b**2)
+            inc = np.degrees(np.arccos(b / a))
 
-                # Generate the transit light curve
-                light_curve = xo.LimbDarkLightCurve(limb_dark_coeffs).get_light_curve(
-                    orbit=orbit, r=ror, t=time
-                )
+            # Set up batman transit parameters
+            params = batman.TransitParams()
+            params.t0 = 0.0
+            params.per = period
+            params.rp = ror
+            params.a = a
+            params.inc = inc
+            params.ecc = 0.0
+            params.w = 90.0
+            params.u = list(limb_dark_coeffs)
+            params.limb_dark = 'quadratic'
 
-                # Compute the model flux
-                flux = pm.math.sum(light_curve, axis=-1).eval()
+            # Generate transit light curve; subtract 1 to give delta flux centred at 0
+            m = batman.TransitModel(params, time)
+            flux = m.light_curve(params) - 1.0
 
-            # Store model
-            # Note: ror is a TensorVariable, so we need to evaluate it
-            if hasattr(ror, 'eval'):
-                ror_value = float(ror.eval())
-            else:
-                ror_value = float(ror)
             model_dict = {
                 'flux': flux,
                 'depth': depth,
                 'duration': duration,
                 'impact_parameter': impact_parameter,
-                'ror': ror_value
+                'ror': float(ror)
             }
             models.append(model_dict)
 
