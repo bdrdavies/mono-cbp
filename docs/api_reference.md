@@ -364,23 +364,7 @@ Process a single light curve file.
 - `ValueError`: If filename cannot be parsed.
 - `FileNotFoundError`: If file_path does not exist.
 
-##### `save_results()`
-```python
-results_df = finder.save_results(
-    output_file: str = 'output.txt',
-    output_dir: str = None
-) -> pd.DataFrame
-```
-
-Save detected events to a text file and return as DataFrame.
-
-**Parameters:**
-- `output_file` (str, optional): Output filename (default: 'output.txt')
-- `output_dir` (str, optional): Directory to save output file (defaults to current directory)
-
-**Returns:** DataFrame with all detected events
-
-**Output Format:**
+**Output Format** (from `process_directory()` via `output_file` and `output_dir` parameters)**:**
 - Text file with space-separated columns
 - Columns depend on detrending method:
   - `cb` method: TIC, SECTOR, TIME, PHASE, DEPTH, DURATION, SNR, WIN_LEN_MAX_SNR, DET_DEPENDENCE, SKYE_FLAG (if available)

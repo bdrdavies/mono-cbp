@@ -155,9 +155,8 @@ config = {
         }
     },
     'model_comparison': {
-        'tune': 2000,  # More tuning steps
-        'draws': 2000,
-        'cores': 8
+        'sigma_threshold': 3,
+        'rmse_threshold': 1.2,
     }
 }
 

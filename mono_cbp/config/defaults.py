@@ -32,11 +32,6 @@ DEFAULT_CONFIG = {
         },
     },
     'model_comparison': {
-        'tune': 1000,
-        'draws': 1000,
-        'chains': 4,
-        'cores': 4,
-        'target_accept': 0.99,
         'sigma_threshold': 3,
         'aic_threshold': 2,
         'rmse_threshold': 1.2,

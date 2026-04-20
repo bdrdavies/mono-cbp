@@ -9,7 +9,8 @@ Complete guide to configuring `mono-cbp`.
 2. User overrides passed as dictionaries
 3. Command-line arguments (for CLI usage)
 
-Note that `config` need not be defined in your code. If you don't define it, `mono-cbp` will use the 
+Note that `config` need not be defined in your code. If you don't define it, `mono-cbp` will use the default values defined in `mono_cbp/config/defaults.py`.
+
 
 ## Configuration Structure
 
@@ -168,18 +169,13 @@ config = {
 
 - `max_duration_days` (float, default: 1.0): Maximum TCE duration (days)
 
-- `det_detection_threshold` (int, default: 18): Threshold for number of biweight-detrended light curves that a TCE is detected for flagging event as "detrending-dependent". E.g., for the default value, if an event is detected in < 18 biweight-detrended light curves, then it is flagged as detrending-dependent. Likewise, if an event is detected in > 18 biweight-detrended light curves, then it is flagged as detrending-independent.
+- `det_dependence_threshold` (int, default: 18): Threshold for number of biweight-detrended light curves that a TCE is detected for flagging event as "detrending-dependent". E.g., for the default value, if an event is detected in < 18 biweight-detrended light curves, then it is flagged as detrending-dependent. Likewise, if an event is detected in > 18 biweight-detrended light curves, then it is flagged as detrending-independent.
 
 ## Model Comparison Configuration
 
 ```python
 config = {
     'model_comparison': {
-        'tune': 1000,
-        'draws': 1000,
-        'chains': 4,
-        'cores': 4,
-        'target_accept': 0.99,
         'sigma_threshold': 3,
         'aic_threshold': 2,
         'rmse_threshold': 1.2,
@@ -190,26 +186,6 @@ config = {
 ```
 
 **Parameters:**
-
-- `tune` (int, default: 1000)
-  - Number of tuning/burn-in steps for each Markov chain
-  - More tuning = better convergence but slower
-
-- `draws` (int, default: 1000)
-  - Number of posterior samples per chain
-  - More draws = better statistics but slower
-
-- `chains` (int, default: 4)
-  - Number of independent Markov chains
-  - More chains = better convergence diagnostics
-
-- `cores` (int, default: 4)
-  - CPU cores for parallel chain execution
-  - Set to number of physical cores
-
-- `target_accept` (float, default: 0.99)
-  - Target acceptance rate for NUTS sampler
-  - Higher = smaller step size, slower but more accurate
 
 - `sigma_threshold` (float, default: 3.0)
   - Number of standard deviations for outlier removal before fitting models
@@ -278,11 +254,6 @@ config = {
         }
     },
     'model_comparison': {
-        'tune': 1000,
-        'draws': 1000,
-        'chains': 4,
-        'cores': 4,
-        'target_accept': 0.99,
         'sigma_threshold': 3,
         'aic_threshold': 2,
         'rmse_threshold': 1.2,

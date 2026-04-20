@@ -75,8 +75,8 @@ See [pyproject.toml](pyproject.toml) or [requirements.txt](requirements.txt) for
 If you encounter issues:
 
 - **Python version**: The package has been tested most thoroughly with Python 3.9.
-- **Dependency conflicts**: The package pins specific versions of PyMC, ArviZ, and Bokeh for compatibility. If you have conflicts, create a fresh environment
-- **Import errors**: If you see errors related to `bokeh` or `arviz`, ensure you have the correct versions installed (see [pyproject.toml](pyproject.toml))
+- **Dependency conflicts**: If you have conflicts with existing packages, create a fresh environment
+- **Import errors**: If you see import errors, ensure all dependencies installed correctly by checking `pip show mono-cbp` and comparing against [pyproject.toml](pyproject.toml)
 
 ## Examples & Tutorials
 

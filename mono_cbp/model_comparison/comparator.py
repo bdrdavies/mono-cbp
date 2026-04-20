@@ -109,45 +109,36 @@ class ModelComparator:
 
         # Fit models
         logger.debug("Fitting transit model...")
-        q50_transit, transit_model_err, n_params_transit = self._fit_transit_model(
+        q50_transit, n_params_transit, transit_params = self._fit_transit_model(
             time, flux, flux_err, event_time, event_width, event_depth
         )
 
         logger.debug("Fitting sinusoidal model...")
-        q50_sinusoidal, sinusoidal_model_err, n_params_sinusoidal = self._fit_sinusoidal_model(
+        q50_sinusoidal, n_params_sinusoidal = self._fit_sinusoidal_model(
             time, flux, flux_err
         )
 
         logger.debug("Fitting linear model...")
-        q50_linear, linear_model_err, n_params_linear = self._fit_linear_model(
+        q50_linear, n_params_linear = self._fit_linear_model(
             time, flux, flux_err
         )
 
         logger.debug("Fitting step model...")
-        q50_step, step_model_err, n_params_step = self._fit_step_model(
+        q50_step, n_params_step = self._fit_step_model(
             time, flux, flux_err
         )
 
-        q16_transit = q50_transit - transit_model_err
-        q84_transit = q50_transit + transit_model_err
-        q16_sinusoidal = q50_sinusoidal - sinusoidal_model_err
-        q84_sinusoidal = q50_sinusoidal + sinusoidal_model_err
-        q16_linear = q50_linear - linear_model_err
-        q84_linear = q50_linear + linear_model_err
-        q16_step = q50_step - step_model_err
-        q84_step = q50_step + step_model_err
-
-        # Calculate total errors
-        transit_total_err = np.sqrt(flux_err**2 + transit_model_err**2)
-        sinusoidal_total_err = np.sqrt(flux_err**2 + sinusoidal_model_err**2)
-        linear_total_err = np.sqrt(flux_err**2 + linear_model_err**2)
-        step_total_err = np.sqrt(flux_err**2 + step_model_err**2)
-
-        # Calculate residuals
-        residuals_transit = (flux - q50_transit) / transit_total_err
-        residuals_sinusoidal = (flux - q50_sinusoidal) / sinusoidal_total_err
-        residuals_linear = (flux - q50_linear) / linear_total_err
-        residuals_step = (flux - q50_step) / step_total_err
+        # Calculate residuals normalised by flux_err only.
+        # Using total_err (which includes eval_uncertainty from lmfit's covariance
+        # matrix) is inconsistent: for ill-constrained parameters the covariance
+        # can be huge, artificially reducing the RMSE and simultaneously inflating
+        # the AIC via the -log(sigma) term in the Gaussian likelihood. flux_err is the
+        # only noise term that was used during fitting, so it is the correct
+        # normaliser for both RMSE and log-likelihood.
+        residuals_transit = (flux - q50_transit) / flux_err
+        residuals_sinusoidal = (flux - q50_sinusoidal) / flux_err
+        residuals_linear = (flux - q50_linear) / flux_err
+        residuals_step = (flux - q50_step) / flux_err
 
         # Calculate RMSE
         rmse_transit = np.sqrt(np.mean(residuals_transit**2))
@@ -155,12 +146,12 @@ class ModelComparator:
         rmse_linear = np.sqrt(np.mean(residuals_linear**2))
         rmse_step = np.sqrt(np.mean(residuals_step**2))
 
-        # Calculate log-likelihoods
+        # Calculate log-likelihoods using flux_err (consistent with fitting)
         log_likelihoods = np.array([
-            np.sum(stats.norm.logpdf(flux, loc=q50_transit, scale=transit_total_err)),
-            np.sum(stats.norm.logpdf(flux, loc=q50_sinusoidal, scale=sinusoidal_total_err)),
-            np.sum(stats.norm.logpdf(flux, loc=q50_linear, scale=linear_total_err)),
-            np.sum(stats.norm.logpdf(flux, loc=q50_step, scale=step_total_err))
+            np.sum(stats.norm.logpdf(flux, loc=q50_transit, scale=flux_err)),
+            np.sum(stats.norm.logpdf(flux, loc=q50_sinusoidal, scale=flux_err)),
+            np.sum(stats.norm.logpdf(flux, loc=q50_linear, scale=flux_err)),
+            np.sum(stats.norm.logpdf(flux, loc=q50_step, scale=flux_err))
         ])
 
         n_params = np.array([n_params_transit, n_params_sinusoidal, n_params_linear, n_params_step])
@@ -170,8 +161,9 @@ class ModelComparator:
         aic_order = np.argsort(aic_arr)
 
         # Classify event
+        aic_threshold = self.model_config['aic_threshold']
         rmse_threshold = self.model_config['rmse_threshold']
-        best_fit = self._classify_event(aic_arr, aic_order, rmse_transit, rmse_sinusoidal, rmse_linear, rmse_step, rmse_threshold)
+        best_fit = self._classify_event(aic_arr, aic_order, rmse_transit, rmse_sinusoidal, rmse_linear, rmse_step, rmse_threshold, aic_threshold)
 
         logger.info(f"Classification: {best_fit}, RMSE_transit: {rmse_transit:.2f}")
 
@@ -189,14 +181,16 @@ class ModelComparator:
             'rmse_step': rmse_step,
         }
 
+        # Add transit model parameters when transit is the preferred classification
+        if best_fit in ('T', 'AT'):
+            results.update(transit_params)
+
         # Save plot if requested
         if save_plot:
             self._save_comparison_plot(
                 time, flux, flux_err,
-                q50_transit, q16_transit, q84_transit,
-                q50_sinusoidal, q16_sinusoidal, q84_sinusoidal,
-                q50_linear, q16_linear, q84_linear,
-                q50_step, q16_step, q84_step,
+                q50_transit, q50_sinusoidal,
+                q50_linear, q50_step,
                 filename, plot_dir
             )
 
@@ -325,12 +319,21 @@ class ModelComparator:
 
         # `t` is the independent variable passed by lmfit; bat_model already
         # holds the same time array so it is not used directly in the body.
-        def transit_func(t, t0, rp, a, inc, u1, u2, mean):
+        #
+        # Limb darkening uses the Kipping (2013) triangular reparametrisation:
+        #   q1 = (u1+u2)^2,  q2 = u1 / (2*(u1+u2))
+        # with q1, q2 within [0, 1].  This guarantees the physical constraints
+        # u1 >= 0 and u1+u2 <= 1 by construction, avoiding negative stellar
+        # intensity at the limb which causes batman to produce flux > 1.
+        def transit_func(t, t0, rp, a, b, q1, q2, mean):
             bp.t0 = t0
-            bp.rp = abs(rp)  # rp must be > 0
-            bp.a = abs(a)    # a must be > 1
-            bp.inc = inc
-            bp.u = [u1, u2]
+            bp.rp = abs(rp)   # rp must be > 0
+            bp.a = abs(a)     # a must be > 1
+            # Convert impact parameter b to inclination: b = a*cos(inc)
+            # Clamp b < a to keep the argument of arccos in (-1, 1)
+            bp.inc = np.degrees(np.arccos(min(abs(b), abs(a) - 1e-6) / abs(a)))
+            sq_q1 = np.sqrt(abs(q1))
+            bp.u = [2.0 * sq_q1 * q2, sq_q1 * (1.0 - 2.0 * q2)]
             # batman returns 1 out-of-transit; mean shifts the baseline
             return bat_model.light_curve(bp) + (mean - 1.0)
 
@@ -338,15 +341,16 @@ class ModelComparator:
                            (time < event_time + event_width / 2))
         baseline = np.median(flux[out_of_transit]) if out_of_transit.any() else np.median(flux)
 
+        # Initial q1, q2 from u1=0.3, u2=0.2: q1=(0.5)^2=0.25, q2=0.3/(2*0.5)=0.3
         lm = lmfit.Model(transit_func, independent_vars=['t'])
         params = lm.make_params(
             t0=dict(value=event_time,
                     min=event_time - event_width, max=event_time + event_width),
             rp=dict(value=rp_init, min=0.001, max=0.5),
             a=dict(value=a_init, min=2.0, max=1000.0),
-            inc=dict(value=90.0, vary=False),
-            u1=dict(value=0.3, vary=False),
-            u2=dict(value=0.2, vary=False),
+            b=dict(value=0.3, min=0.0, max=1.0),
+            q1=dict(value=0.25, min=0.0, max=1.0),
+            q2=dict(value=0.3, min=0.0, max=1.0),
             mean=dict(value=baseline, min=0.8, max=1.2),
         )
 
@@ -354,15 +358,54 @@ class ModelComparator:
                         method='least_squares')
 
         best_fit = result.best_fit
-        try:
-            uncertainty = result.eval_uncertainty(sigma=1)
-            if not np.isfinite(uncertainty).all():
-                raise ValueError("non-finite values in covariance matrix")
-        except Exception as e:
-            logger.warning(f"Transit fit: could not compute uncertainty: {e}")
-            uncertainty = np.zeros_like(best_fit)
 
-        return best_fit, uncertainty, 4  # 4 free parameters (t0, rp, a, mean)
+        # Extract best-fit parameter values and 1-sigma uncertainties
+        def _stderr(name):
+            s = result.params[name].stderr
+            return float(s) if s is not None else np.nan
+
+        rp_val = float(abs(result.params['rp'].value))
+        a_val  = float(abs(result.params['a'].value))
+        b_val  = float(abs(result.params['b'].value))
+
+        # Build the 3x3 covariance submatrix for (rp, a, b) if available
+        cov_sub = None
+        if result.covar is not None:
+            try:
+                idx = {name: i for i, name in enumerate(result.var_names)}
+                ii = [idx['rp'], idx['a'], idx['b']]
+                cov_sub = result.covar[np.ix_(ii, ii)]
+                if not np.isfinite(cov_sub).all():
+                    cov_sub = None
+            except (KeyError, IndexError):
+                cov_sub = None
+
+        duration, duration_err = self._compute_transit_duration(
+            PERIOD, rp_val, a_val, b_val,
+            _stderr('rp'), _stderr('a'), _stderr('b'),
+            cov=cov_sub,
+        )
+
+        transit_params = {
+            'transit_t0':           float(result.params['t0'].value),
+            'transit_t0_err':       _stderr('t0'),
+            'transit_rp':           rp_val,
+            'transit_rp_err':       _stderr('rp'),
+            'transit_a':            a_val,
+            'transit_a_err':        _stderr('a'),
+            'transit_b':            b_val,
+            'transit_b_err':        _stderr('b'),
+            'transit_q1':           float(result.params['q1'].value),
+            'transit_q1_err':       _stderr('q1'),
+            'transit_q2':           float(result.params['q2'].value),
+            'transit_q2_err':       _stderr('q2'),
+            'transit_mean':         float(result.params['mean'].value),
+            'transit_mean_err':     _stderr('mean'),
+            'transit_duration':     duration,
+            'transit_duration_err': duration_err,
+        }
+
+        return best_fit, 7, transit_params  # 7 free parameters (t0, rp, a, b, u1, u2, mean)
 
     def _fit_sinusoidal_model(self, time, flux, flux_err):
         """Fit sinusoidal model to data."""
@@ -385,15 +428,8 @@ class ModelComparator:
                         method='least_squares')
 
         best_fit = result.best_fit
-        try:
-            uncertainty = result.eval_uncertainty(sigma=1)
-            if not np.isfinite(uncertainty).all():
-                raise ValueError("non-finite values in covariance matrix")
-        except Exception as e:
-            logger.warning(f"Sinusoidal fit: could not compute uncertainty: {e}")
-            uncertainty = np.zeros_like(best_fit)
 
-        return best_fit, uncertainty, 4  # amplitude, frequency, phase, mean
+        return best_fit, 4  # amplitude, frequency, phase, mean
 
     def _fit_linear_model(self, time, flux, flux_err):
         """Fit linear model to data."""
@@ -410,15 +446,8 @@ class ModelComparator:
                         method='least_squares')
 
         best_fit = result.best_fit
-        try:
-            uncertainty = result.eval_uncertainty(sigma=1)
-            if not np.isfinite(uncertainty).all():
-                raise ValueError("non-finite values in covariance matrix")
-        except Exception as e:
-            logger.warning(f"Linear fit: could not compute uncertainty: {e}")
-            uncertainty = np.zeros_like(best_fit)
 
-        return best_fit, uncertainty, 2  # slope, intercept
+        return best_fit, 2  # slope, intercept
 
     def _fit_step_model(self, time, flux, flux_err):
         """Fit step/polynomial model to data."""
@@ -461,17 +490,65 @@ class ModelComparator:
                         method='least_squares')
 
         best_fit = result.best_fit
-        try:
-            uncertainty = result.eval_uncertainty(sigma=1)
-            if not np.isfinite(uncertainty).all():
-                raise ValueError("non-finite values in covariance matrix")
-        except Exception as e:
-            logger.warning(f"Step fit: could not compute uncertainty: {e}")
-            uncertainty = np.zeros_like(best_fit)
 
-        return best_fit, uncertainty, n_params
+        return best_fit, n_params
 
-    def _classify_event(self, aic_arr, aic_order, rmse_transit, rmse_sinusoidal, rmse_linear, rmse_step, rmse_threshold):
+    @staticmethod
+    def _compute_transit_duration(period, rp, a, b, rp_err, a_err, b_err, cov=None):
+        """Compute transit duration and propagated 1-sigma uncertainty.
+
+        Uses the circular-orbit formula:
+            T14 = (P/π) * arcsin( sqrt((1+rp)² - b²) / sqrt(a² - b²) )
+
+        Args:
+            period (float): Orbital period (days)
+            rp (float): Radius ratio Rp/R★
+            a (float): Semi-major axis in stellar radii
+            b (float): Impact parameter
+            rp_err, a_err, b_err (float): 1-sigma uncertainties (NaN if unavailable)
+            cov (ndarray, optional): 3x3 covariance matrix for (rp, a, b). When
+                provided, the full correlated propagation σ² = gᵀCg is used,
+                which avoids over-estimating the uncertainty due to anti-correlated
+                parameters (e.g. a and b). Falls back to diagonal propagation if None.
+
+        Returns:
+            tuple: (duration, duration_err) in days
+        """
+        num2 = (1.0 + rp)**2 - b**2
+        den2 = a**2 - b**2
+
+        if num2 <= 0.0 or den2 <= 0.0:
+            return np.nan, np.nan
+
+        num = np.sqrt(num2)
+        den = np.sqrt(den2)
+        arg = num / den
+
+        if arg >= 1.0:
+            return np.nan, np.nan
+
+        duration = (period / np.pi) * np.arcsin(arg)
+
+        # Gradient of T w.r.t. (rp, a, b)
+        dT_darg = (period / np.pi) / np.sqrt(1.0 - arg**2)
+        g = np.array([
+            dT_darg * (1.0 + rp) / (num * den),           # dT/drp
+            dT_darg * (-a * num / den**3),                 # dT/da
+            dT_darg * (b * ((1.0 + rp)**2 - a**2) / (num * den**3)),  # dT/db
+        ])
+
+        if cov is not None:
+            var = float(g @ cov @ g)
+        else:
+            # Diagonal (independent) fallback
+            errs = np.array([rp_err, a_err, b_err])
+            finite = np.isfinite(errs)
+            var = float(np.sum((g[finite] * errs[finite])**2))
+
+        duration_err = np.sqrt(var) if var > 0.0 else np.nan
+        return duration, duration_err
+
+    def _classify_event(self, aic_arr, aic_order, rmse_transit, rmse_sinusoidal, rmse_linear, rmse_step, rmse_threshold, aic_threshold=2):
         """Classify event based on AIC and RMSE.
 
         Args:
@@ -482,6 +559,7 @@ class ModelComparator:
             rmse_linear (float): RMSE for linear model
             rmse_step (float): RMSE for step model
             rmse_threshold (float): RMSE threshold for ambiguity classification
+            aic_threshold (float): Minimum AIC difference for an unambiguous classification
 
         Returns:
             str: Classification result
@@ -498,8 +576,8 @@ class ModelComparator:
         # Get all other models' AICs
         other_models_aic = np.array([aic_arr[i] for i in range(len(aic_arr)) if i != best_fit_idx])
 
-        # Check if best fit satisfies AIC criterion: min_aic - all_others <= -2
-        is_unambiguous = np.all(best_fit_aic - other_models_aic <= -2)
+        # Check if best fit satisfies AIC criterion: best_aic is at least aic_threshold lower than all others
+        is_unambiguous = np.all(best_fit_aic - other_models_aic <= -aic_threshold)
 
         if is_unambiguous:
             # Classify based on model type and RMSE
@@ -518,10 +596,8 @@ class ModelComparator:
             return "A"
 
     def _save_comparison_plot(self, time, flux, flux_err,
-                             q50_transit, q16_transit, q84_transit,
-                             q50_sinusoidal, q16_sinusoidal, q84_sinusoidal,
-                             q50_linear, q16_linear, q84_linear,
-                             q50_step, q16_step, q84_step,
+                             q50_transit, q50_sinusoidal,
+                             q50_linear, q50_step,
                              filename, plot_dir):
         """Save diagnostic plot comparing all model fits."""
         if plot_dir is None:
@@ -542,20 +618,12 @@ class ModelComparator:
 
             plt.plot(time[start_idx:end_idx], q50_transit[start_idx:end_idx], 'r-',
                     label="Transit" if i == 0 else "")
-            plt.fill_between(time[start_idx:end_idx], q16_transit[start_idx:end_idx],
-                           q84_transit[start_idx:end_idx], alpha=0.3, color='r')
             plt.plot(time[start_idx:end_idx], q50_sinusoidal[start_idx:end_idx], 'b-',
                     label="Sinusoid" if i == 0 else "")
-            plt.fill_between(time[start_idx:end_idx], q16_sinusoidal[start_idx:end_idx],
-                           q84_sinusoidal[start_idx:end_idx], alpha=0.3, color='b')
             plt.plot(time[start_idx:end_idx], q50_linear[start_idx:end_idx], 'g-',
                     label="Linear" if i == 0 else "")
-            plt.fill_between(time[start_idx:end_idx], q16_linear[start_idx:end_idx],
-                           q84_linear[start_idx:end_idx], alpha=0.3, color='g')
             plt.plot(time[start_idx:end_idx], q50_step[start_idx:end_idx], '-', c='orange',
                     label="Step" if i == 0 else "")
-            plt.fill_between(time[start_idx:end_idx], q16_step[start_idx:end_idx],
-                           q84_step[start_idx:end_idx], alpha=0.3, color='orange')
 
         plt.legend()
         plt.xlabel("Time - 2457000 (BTJD days)")
