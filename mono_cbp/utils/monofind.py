@@ -190,6 +190,7 @@ def extract_event_metadata(time, flux, peaks):
     depths, widths, start_times, end_times = [], [], [], []
     for t_mid_idx in peaks:
         t_max, t_min = [], []
+        end_idx, start_idx = None, None
         # Find end time
         for k in range(len(time[t_mid_idx:])):
             if len(t_max) == 1:
@@ -220,11 +221,13 @@ def extract_event_metadata(time, flux, peaks):
                 start_times.append(time[0])
                 end_times.append(t_max[0])
         try:
-            # Check that end_idx has been updated if the event is at the end of the sector/quarter
-            if end_idx < start_idx:
+            if end_idx is not None and start_idx is not None and end_idx < start_idx:
                 end_idx = len(time) - 1
-            depths.append(1 - np.median(flux[start_idx:end_idx]))
-        except UnboundLocalError:
+            if start_idx is not None and end_idx is not None:
+                depths.append(1 - np.median(flux[start_idx:end_idx]))
+            else:
+                depths.append(1 - flux[t_mid_idx])
+        except Exception:
             depths.append(1 - flux[t_mid_idx])
     return depths, widths, start_times, end_times
 

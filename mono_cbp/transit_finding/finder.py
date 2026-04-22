@@ -560,9 +560,8 @@ class TransitFinder:
 
         cadence_minutes = self.transit_config['cadence_minutes']
         cadence_days = cadence_minutes * MINUTES_TO_DAYS
-        event_duration_days = meta['widths'][event_idx]  # Time-span (includes gaps)
-        event_duration_cadence = len(time[mask][in_transit]) * cadence_days  # For SNR only
-        snr = round(get_snr(meta['depths'][event_idx], event_err, event_duration_cadence, cadence=cadence_minutes), 2)
+        event_duration_days = len(time[mask][in_transit]) * cadence_days  # Cadence-based (excludes gaps)
+        snr = round(get_snr(meta['depths'][event_idx], event_err, event_duration_days, cadence=cadence_minutes), 2)
 
         return {
             'time': event_time,
