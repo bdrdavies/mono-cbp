@@ -14,7 +14,11 @@ from .model_comparison import ModelComparator
 from .injection_retrieval import TransitInjector
 from .pipeline import MonoCBPPipeline
 
-__version__ = "0.1.4"
+try:
+    from importlib.metadata import version as _version, PackageNotFoundError
+    __version__ = _version("mono-cbp")
+except PackageNotFoundError:
+    __version__ = "unknown"
 __author__ = "Benjamin Davies"
 __all__ = [
     "EclipseMasker",
