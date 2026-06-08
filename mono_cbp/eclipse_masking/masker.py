@@ -192,7 +192,7 @@ class EclipseMasker:
                         Returns data unchanged if <5 columns or no OOE data to fit.
         """
 
-        if data.shape[1] != 5 or not np.any(not data[:, -1]):
+        if data.shape[1] != 5 or not np.any(data[:, -1] == False):  # noqa: E712
             return data
 
         all_time = data[:, 0]
