@@ -303,13 +303,16 @@ class EclipseMasker:
 
         # Save based on format
         if file_ext == '.npz':
-            # Save as npz, preserving the original key names from the input file
-            np.savez(file_path,
-                     **{self.npz_keys['time']: time,
-                        self.npz_keys['flux']: flux,
-                        self.npz_keys['flux_err']: flux_err,
-                        'phase': phase,
-                        'eclipse_mask': eclipse_mask})
+            # Start from all original keys so unrecognised arrays are preserved
+            save_data = dict(np.load(file_path))
+            save_data.update({
+                self.npz_keys['time']: time,
+                self.npz_keys['flux']: flux,
+                self.npz_keys['flux_err']: flux_err,
+                'phase': phase,
+                'eclipse_mask': eclipse_mask,
+            })
+            np.savez(file_path, **save_data)
             logger.info(f"Saved eclipse mask to {file}")
         else:
             # Save as txt
