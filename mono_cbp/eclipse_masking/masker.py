@@ -29,7 +29,7 @@ class EclipseMasker:
         data_dir (str): Directory containing light curve data files
     """
 
-    def __init__(self, catalogue, data_dir='./data', TEBC=False):
+    def __init__(self, catalogue, data_dir='./data', TEBC=False, npz_keys=None):
         """Initialise EclipseMasker.
 
         Args:
@@ -39,6 +39,9 @@ class EclipseMasker:
             TEBC (bool, optional): If True, processes TEBC catalogue format with *_2g and *_pf columns
                 and converts to standard eclipse parameter columns. If a DataFrame is passed that already
                 has standard columns, TEBC processing is skipped. Defaults to False.
+            npz_keys (dict, optional): Mapping from logical key names to actual keys in the npz file.
+                Recognised logical keys: 'time', 'flux', 'flux_err'. Unspecified keys use their
+                default names. Example: {'flux': 'corr_flux', 'flux_err': 'corr_flux_err'}.
 
         Raises:
             FileNotFoundError: If data_dir does not exist
@@ -64,6 +67,10 @@ class EclipseMasker:
                     logger.info("Catalogue already has standard eclipse parameter columns, skipping TEBC processing")
             self.catalogue = catalogue
 
+        self.npz_keys = {'time': 'time', 'flux': 'flux', 'flux_err': 'flux_err'}
+        if npz_keys:
+            self.npz_keys.update(npz_keys)
+
         self.data_dir = data_dir
         logger.info(f"Initialised EclipseMasker with data directory: {data_dir}")
 
@@ -82,9 +89,9 @@ class EclipseMasker:
                 - eclipse_mask_existing: Existing eclipse mask (None if not present in file)
         """
         npz_data = np.load(file_path)
-        time = npz_data['time']
-        flux = npz_data['flux']
-        flux_err = npz_data['flux_err']
+        time = npz_data[self.npz_keys['time']]
+        flux = npz_data[self.npz_keys['flux']]
+        flux_err = npz_data[self.npz_keys['flux_err']]
         phase = npz_data.get('phase', None)
         eclipse_mask_existing = npz_data.get('eclipse_mask', None)
         return time, flux, flux_err, phase, eclipse_mask_existing
@@ -185,7 +192,7 @@ class EclipseMasker:
                         Returns data unchanged if <5 columns or no OOE data to fit.
         """
 
-        if data.shape[1] != 5 or not np.any(data[:, -1] == False):
+        if data.shape[1] != 5 or not np.any(not data[:, -1]):
             return data
 
         all_time = data[:, 0]
@@ -296,13 +303,13 @@ class EclipseMasker:
 
         # Save based on format
         if file_ext == '.npz':
-            # Save as npz
+            # Save as npz, preserving the original key names from the input file
             np.savez(file_path,
-                     time=time,
-                     flux=flux,
-                     flux_err=flux_err,
-                     phase=phase,
-                     eclipse_mask=eclipse_mask)
+                     **{self.npz_keys['time']: time,
+                        self.npz_keys['flux']: flux,
+                        self.npz_keys['flux_err']: flux_err,
+                        'phase': phase,
+                        'eclipse_mask': eclipse_mask})
             logger.info(f"Saved eclipse mask to {file}")
         else:
             # Save as txt
