@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from ..utils.eclipses import get_eclipse_mask, time_to_phase
 from ..utils.data import get_row, process_tebc_catalogue
 from ..utils import load_catalogue
+from ..config import get_default_config, merge_config
 
 logger = logging.getLogger('mono_cbp.eclipse_masking')
 
@@ -29,7 +30,7 @@ class EclipseMasker:
         data_dir (str): Directory containing light curve data files
     """
 
-    def __init__(self, catalogue, data_dir='./data', TEBC=False, npz_keys=None):
+    def __init__(self, catalogue, data_dir='./data', TEBC=False, config=None):
         """Initialise EclipseMasker.
 
         Args:
@@ -39,9 +40,9 @@ class EclipseMasker:
             TEBC (bool, optional): If True, processes TEBC catalogue format with *_2g and *_pf columns
                 and converts to standard eclipse parameter columns. If a DataFrame is passed that already
                 has standard columns, TEBC processing is skipped. Defaults to False.
-            npz_keys (dict, optional): Mapping from logical key names to actual keys in the npz file.
-                Recognised logical keys: 'time', 'flux', 'flux_err'. Unspecified keys use their
-                default names. Example: {'flux': 'corr_flux', 'flux_err': 'corr_flux_err'}.
+            config (dict, optional): Configuration dictionary. Uses defaults if None. The 'npz_keys'
+                section maps logical key names ('time', 'flux', 'flux_err') to the actual keys
+                used in the npz file, e.g. {'npz_keys': {'flux': 'corr_flux', 'flux_err': 'corr_flux_err'}}.
 
         Raises:
             FileNotFoundError: If data_dir does not exist
@@ -67,9 +68,8 @@ class EclipseMasker:
                     logger.info("Catalogue already has standard eclipse parameter columns, skipping TEBC processing")
             self.catalogue = catalogue
 
-        self.npz_keys = {'time': 'time', 'flux': 'flux', 'flux_err': 'flux_err'}
-        if npz_keys:
-            self.npz_keys.update(npz_keys)
+        self.config = merge_config(config, get_default_config()) if config else get_default_config()
+        self.npz_keys = self.config['npz_keys']
 
         self.data_dir = data_dir
         logger.info(f"Initialised EclipseMasker with data directory: {data_dir}")

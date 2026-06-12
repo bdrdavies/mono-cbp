@@ -3,6 +3,11 @@
 import copy
 
 DEFAULT_CONFIG = {
+    'npz_keys': {
+        'time': 'time',
+        'flux': 'flux',
+        'flux_err': 'flux_err',
+    },
     'transit_finding': {
         'edge_cutoff': 0.0,
         'mad_threshold': 3.0,

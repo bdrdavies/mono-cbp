@@ -113,7 +113,7 @@ def main():
             vetting_df = results['vetting']
             n_candidates = len(vetting_df[vetting_df['best_fit'].isin(['T', 'AT'])]) if len(vetting_df) > 0 else 0
 
-        print(f"\nPipeline complete!")
+        print("\nPipeline complete!")
         print(f"  Transit events detected: {n_events}")
         if 'vetting' in results:
             print(f"  High-confidence candidates: {n_candidates}")
@@ -128,7 +128,7 @@ def main():
         print(f"Data directory: {args.data_dir}")
         print("Note: Files will be modified in-place\n")
 
-        # Load config from file if provided (for potential future use)
+        # Load config from file if provided
         config = {}
         if hasattr(args, 'config') and args.config:
             print(f"Configuration: {args.config}")
@@ -136,7 +136,7 @@ def main():
                 config = json.load(f)
 
         catalogue = load_catalogue(args.catalogue, TEBC=args.tebc if hasattr(args, 'tebc') else False)
-        masker = EclipseMasker(catalogue, data_dir=args.data_dir)
+        masker = EclipseMasker(catalogue, data_dir=args.data_dir, config=config if config else None)
 
         print("Starting eclipse masking...\n")
         masker.mask_all()

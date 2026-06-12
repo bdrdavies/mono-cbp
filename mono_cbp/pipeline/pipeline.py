@@ -69,7 +69,7 @@ class MonoCBPPipeline:
         logger.info(f"Initialised pipeline with {len(self.catalogue)} targets")
 
         # Initialise components
-        self.eclipse_masker = EclipseMasker(self.catalogue, data_dir=data_dir)
+        self.eclipse_masker = EclipseMasker(self.catalogue, data_dir=data_dir, config=self.config)
 
         self.transit_finder = TransitFinder(
             catalogue=self.catalogue,

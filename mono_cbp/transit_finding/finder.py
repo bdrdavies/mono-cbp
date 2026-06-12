@@ -92,6 +92,8 @@ class TransitFinder:
         self.config = merge_config(config, get_default_config()) if config else get_default_config()
         self.transit_config = self.config['transit_finding']
 
+        self.npz_keys = self.config['npz_keys']
+
         # Results storage
         self.results = self._initialise_results()
         self.stats = self._initialise_stats()
@@ -191,7 +193,7 @@ class TransitFinder:
         results_df = self._save_results(output_file, output_dir)
 
         # Log statistics
-        logger.info(f"Processing complete:")
+        logger.info("Processing complete:")
         logger.info(f"  Total files: {self.stats['total_files']}")
         logger.info(f"  Total events: {self.stats['total_events']}")
         logger.info(f"  Cosine detrending successes: {self.stats['cosine_successes']}/{self.stats['total_files']}")
@@ -213,9 +215,9 @@ class TransitFinder:
                 - ecl_mask: np.ndarray (bool) of eclipse mask or None if not present in file
         """
         data = np.load(file_path)
-        time = data['time']
-        flux = data['flux']
-        flux_err = data['flux_err']
+        time = data[self.npz_keys['time']]
+        flux = data[self.npz_keys['flux']]
+        flux_err = data[self.npz_keys['flux_err']]
         phase = data.get('phase', None)
         ecl_mask_raw = data.get('eclipse_mask', None)
         ecl_mask = ecl_mask_raw.astype(bool) if ecl_mask_raw is not None else None
