@@ -279,8 +279,14 @@ class TransitFinder:
         # Get eclipse parameters
         prim_pos, prim_width, sec_pos, sec_width = self._get_eclipse_params(tic)
 
+        # Skip files with too few valid data points to process
+        valid_time = time[~np.isnan(flux)]
+        if valid_time.size < 2:
+            logger.warning(f"Not enough valid data points in {file}, skipping")
+            return []
+
         # Bin to long cadence if needed
-        if np.median(np.gradient(time[~np.isnan(flux)])) < self.transit_config['cadence_minutes'] * MINUTES_TO_DAYS:
+        if np.median(np.gradient(valid_time)) < self.transit_config['cadence_minutes'] * MINUTES_TO_DAYS:
             time, flux, flux_err = bin_to_long_cadence(time, flux, flux_err)
             if self.catalogue is not None:
                 row = self.catalogue[self.catalogue['tess_id'] == tic]
@@ -391,6 +397,12 @@ class TransitFinder:
             self.results['event_depths'].append(event_data['depth'])
             self.results['event_durations'].append(event_data['duration'])
             self.results['event_snrs'].append(event_data['snr'])
+
+            if self.transit_config['generate_event_snippets']:
+                snippet = self._create_event_snippet(
+                    time, flux_err, flatten_lc, mask, event_data, tic, sector, len(events)
+                )
+                self.results['event_snippets'].append(snippet)
 
             if self.transit_config['generate_vetting_plots'] and plot_output_dir:
                 plot_event(time, event_data['time'], flatten_lc, flux, flux_err,
@@ -780,6 +792,7 @@ class TransitFinder:
             output_dir = os.getcwd()
 
         output_path = os.path.join(output_dir, output_file)
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
         # Build output array
         method = self.transit_config['detrending_method']
@@ -828,7 +841,7 @@ class TransitFinder:
         if (self.transit_config['generate_event_snippets'] and
             self.transit_config.get('save_event_snippets', True) and
             len(self.results['event_snippets']) > 0):
-            snippet_dir = os.path.join(output_dir, 'event_snippets')
+            snippet_dir = os.path.join(os.path.dirname(os.path.abspath(output_path)), 'event_snippets')
             os.makedirs(snippet_dir, exist_ok=True)
             for snippet in self.results['event_snippets']:
                 snippet_file = f"TIC_{snippet['tic']}_{snippet['sector']}_{snippet['event_no']}.npz"

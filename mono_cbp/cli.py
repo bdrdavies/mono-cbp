@@ -64,6 +64,11 @@ def main():
 
     args = parser.parse_args()
 
+    import logging
+    from mono_cbp.utils import setup_logging
+    setup_logging()
+    logging.getLogger('mono_cbp.utils.detrending').setLevel(logging.WARNING)
+
     if args.command is None:
         parser.print_help()
         sys.exit(1)
