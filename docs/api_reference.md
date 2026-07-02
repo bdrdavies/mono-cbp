@@ -17,7 +17,7 @@ pipeline = MonoCBPPipeline(
     catalogue_path: str,
     data_dir: str = './data',
     output_dir: str = './results',
-    sector_times_path: str = '../../catalogues/sector_times.csv',
+    sector_times_path: str = None,
     TEBC: bool = False,
     transit_models_path: str = None,
     config: dict = None
@@ -28,7 +28,7 @@ pipeline = MonoCBPPipeline(
 - `catalogue_path` (str): Path to CSV containing catalogue of EBs
 - `data_dir` (str, optional): Directory containing light curve files (default: './data')
 - `output_dir` (str, optional): Directory to produce output files (default: './results')
-- `sector_times_path` (str, optional): Path to file containing the start and end times of TESS sectors (for Skye metric calculation, default: '../../catalogues/sector_times.csv')
+- `sector_times_path` (str, optional): Path to file containing the start and end times of TESS sectors for Skye metric calculation. If None, the Skye metric is disabled. A file covering sectors 1-98 is provided in the repository at `catalogues/sector_times.csv` (default: None)
 - `TEBC` (bool, optional): Flag for TESS Eclipsing Binary Catalogue format (default: False)
 - `transit_models_path` (str, optional): Path to transit models for injection-retrieval (default: None)
 - `config` (dict, optional): Configuration dictionary (default: None)
@@ -309,13 +309,13 @@ finder = TransitFinder(
 
 **Parameters:**
 - `catalogue` (str or DataFrame, optional): Path to or DataFrame of catalogue with eclipse parameters (prim_pos, prim_width, sec_pos, sec_width) and binary ephemerides (period, bjd0). If a DataFrame is passed that has already been processed (contains standard eclipse parameter columns), it will be used as-is (default: None)
-- `sector_times` (str or DataFrame, optional): Path to or DataFrame of sector times CSV for Skye metric calculation (default: None)
+- `sector_times` (str or DataFrame, optional): Path to or DataFrame of sector times CSV for Skye metric calculation. If the path does not exist, a warning is logged and the Skye metric is disabled (default: None)
 - `config` (dict, optional): Configuration dictionary. Uses defaults if None (default: None)
 - `TEBC` (bool, optional): If True, processes TEBC catalogue format with *_2g and *_pf columns and converts to standard eclipse parameter columns. If a DataFrame is passed that already has standard columns, TEBC processing is skipped (default: False)
 
 **Raises:**
 - `ValueError`: If catalogue path cannot be loaded or catalogue data is invalid.
-- `FileNotFoundError`: If catalogue or sector_times file path does not exist.
+- `FileNotFoundError`: If catalogue file path does not exist. (A missing sector_times path logs a warning and disables the Skye metric instead of raising.)
 - `KeyError`: If configuration dictionary is missing required keys.
 
 **Methods:**

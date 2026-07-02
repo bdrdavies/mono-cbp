@@ -40,7 +40,7 @@ class MonoCBPPipeline:
     """
 
     def __init__(self, catalogue_path, data_dir='./data', output_dir='./results',
-                 sector_times_path='../../catalogues/sector_times.csv', TEBC=False, transit_models_path=None, config=None):
+                 sector_times_path=None, TEBC=False, transit_models_path=None, config=None):
         """Initialise MonoCBPPipeline.
 
         Args:
@@ -49,7 +49,9 @@ class MonoCBPPipeline:
                 sec_pos, sec_width.
             data_dir (str, optional): Directory containing light curve files. Defaults to './data'.
             output_dir (str, optional): Directory for output files. Defaults to './results'.
-            sector_times_path (str, optional): Path to sector times CSV for Skye metric. Defaults to '../../catalogue/sector_times.csv'.
+            sector_times_path (str, optional): Path to sector times CSV for Skye metric.
+                If None (default), the Skye metric is disabled. A sector times file covering
+                sectors 1-98 is provided in the repository at catalogues/sector_times.csv.
             TEBC (bool, optional): Whether the catalogue is the TESS EB Catalogue. Defaults to False.
             transit_models_path (str, optional): Path to transit models for injection-retrieval. If None, injection-retrieval is disabled. Defaults to None.
             config (dict, optional): Configuration dictionary. Uses defaults if None.

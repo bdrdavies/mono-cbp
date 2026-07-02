@@ -80,8 +80,13 @@ class TransitFinder:
 
         if sector_times is not None:
             if isinstance(sector_times, str):
-                self.sector_times = pd.read_csv(sector_times, comment='#')
-                logger.info(f"Loaded sector times from {sector_times}")
+                try:
+                    self.sector_times = pd.read_csv(sector_times, comment='#')
+                    logger.info(f"Loaded sector times from {sector_times}")
+                except FileNotFoundError:
+                    self.sector_times = None
+                    logger.warning(f"Sector times file not found: {sector_times} - "
+                                   "Skye metric will not be available")
             else:
                 self.sector_times = sector_times
         else:
