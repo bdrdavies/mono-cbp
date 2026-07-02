@@ -40,14 +40,10 @@ def get_eclipse_indices(phase, pos, width):
     if np.isnan(pos) or np.isnan(width) or width == 0:
         return np.array([], dtype=int)
 
-    if pos > 0.95:
-        # For eclipses near phase 1, wrap around by subtracting 1 from the upper bound
-        idx = np.where(np.logical_or(phase >= pos - width/2, phase <= pos + width/2 - 1))
-    elif pos < 0.05:
-        # For eclipses near phase 0, wrap around by adding 1 to the lower bound
-        idx = np.where(np.logical_or(phase >= pos - width/2 + 1, phase <= pos + width/2))
-    else:
-        idx = np.where(np.logical_and(phase >= pos - width/2, phase <= pos + width/2))
+    # Circular phase distance in [-0.5, 0.5) handles eclipses at any position,
+    # including those straddling the phase 0/1 boundary
+    dist = (np.asarray(phase) - pos + 0.5) % 1.0 - 0.5
+    idx = np.where(np.abs(dist) <= width / 2)
 
     return idx[0]
 
