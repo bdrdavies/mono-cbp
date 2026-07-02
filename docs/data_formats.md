@@ -41,8 +41,8 @@ The code preferentially uses `*_2g` values, falling back to `*_pf` only if 2g va
 Light curves should be in one of two formats with the following naming convention:
 
 **Filename convention:** `TIC_{tic_id}_{sector}.txt` or `TIC_{tic_id}_{sector}.npz`
-- Sector is always 2 digits with leading zeros (e.g., `06`, `10`)
-- Examples: `TIC_260128333_06.txt`, `TIC_146530594_09.npz`
+- Sector may be written with or without leading zeros and with an optional `S` prefix (e.g., `06`, `6`, `S06`, `106`)
+- Examples: `TIC_260128333_06.txt`, `TIC_146530594_09.npz`, `TIC_146530594_S09.npz`
 
 #### Format 1: Text files (`.txt`)
 

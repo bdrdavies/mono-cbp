@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from ..utils.eclipses import get_eclipse_mask, time_to_phase
 from ..utils.data import get_row, process_tebc_catalogue
 from ..utils import load_catalogue
+from ..utils.io import parse_filename, load_light_curve
 from ..config import get_default_config, merge_config
 
 logger = logging.getLogger('mono_cbp.eclipse_masking')
@@ -74,58 +75,6 @@ class EclipseMasker:
         self.data_dir = data_dir
         logger.info(f"Initialised EclipseMasker with data directory: {data_dir}")
 
-    def _load_npz(self, file_path):
-        """Load light curve data from .npz file.
-
-        Args:
-            file_path (str): Path to the .npz file
-
-        Returns:
-            tuple: (np.ndarray, np.ndarray, np.ndarray, np.ndarray or None, np.ndarray or None)
-                - time: Time values from file
-                - flux: Flux values from file
-                - flux_err: Flux error values from file
-                - phase: Binary phase values for each cadence (None if not present in file)
-                - eclipse_mask_existing: Existing eclipse mask (None if not present in file)
-        """
-        npz_data = np.load(file_path)
-        time = npz_data[self.npz_keys['time']]
-        flux = npz_data[self.npz_keys['flux']]
-        flux_err = npz_data[self.npz_keys['flux_err']]
-        phase = npz_data.get('phase', None)
-        eclipse_mask_existing = npz_data.get('eclipse_mask', None)
-        return time, flux, flux_err, phase, eclipse_mask_existing
-
-    def _load_txt(self, file_path):
-        """Load light curve data from .txt file.
-
-        Args:
-            file_path (str): Path to the .txt file
-
-        Returns:
-            tuple: (np.ndarray, np.ndarray, np.ndarray, np.ndarray or None, np.ndarray or None)
-                - time: Time values from file
-                - flux: Flux values from file
-                - flux_err: Flux error values from file
-                - phase: Binary phase values (None if not present in file)
-                - eclipse_mask_existing: Existing eclipse mask (None if not present in file)
-        """
-        data = np.loadtxt(file_path, skiprows=1)
-        time = data[:, 0]
-        flux = data[:, 1]
-        flux_err = data[:, 2]
-
-        # Check if phase column exists (column 3)
-        if data.shape[1] > 3:
-            phase = data[:, 3]
-            # Convert eclipse_mask to boolean (stored as 0/1 integers)
-            eclipse_mask_existing = data[:, 4].astype(bool) if data.shape[1] > 4 else None
-        else:
-            phase = None
-            eclipse_mask_existing = None
-
-        return time, flux, flux_err, phase, eclipse_mask_existing
-
     def _combine_eclipse_masks(self, prim_ecl_mask, sec_ecl_mask, phase):
         """Combine primary and secondary eclipse masks.
 
@@ -148,31 +97,6 @@ class EclipseMasker:
             result = np.zeros_like(phase, dtype=bool)
 
         return result
-
-    def _parse_filename(self, filename):
-        """Parse TIC ID and sector number from filename.
-
-        Expected filename format: TIC_<TICID>_<SECTOR>.<EXT>
-        Sector is always 2 digits (e.g., 02 or 10) but returned without leading zeros.
-
-        Args:
-            filename (str): Filename to parse
-
-        Returns:
-            tuple: (tic_id, sector) where tic_id is int and sector is str without leading zeros
-
-        Raises:
-            ValueError: If filename format is invalid
-        """
-        try:
-            parts = filename.split('_')
-            tic_id = int(parts[1])
-            sector_part = parts[2].split('.')[0]
-            sector_num = int(sector_part)  # Convert to int to remove leading zero
-            sector = str(sector_num)
-            return tic_id, sector
-        except (ValueError, IndexError) as e:
-            raise ValueError(f"Failed to parse TIC ID and sector from filename '{filename}': {e}")
 
     def _detrend_out_of_eclipse_data(self, data):
         """Detrend out-of-eclipse flux using segmented polynomial fitting.
@@ -269,16 +193,14 @@ class EclipseMasker:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        # Load data based on file format
-        if file_ext == '.npz':
-            time, flux, flux_err, phase, eclipse_mask_existing = self._load_npz(file_path)
-        elif file_ext == '.txt':
-            time, flux, flux_err, phase, eclipse_mask_existing = self._load_txt(file_path)
-        else:
-            raise ValueError(f"Unsupported file format: {file}")
+        # Load data (raises ValueError for unsupported formats)
+        time, flux, flux_err, phase, eclipse_mask_existing = load_light_curve(
+            file_path, npz_keys=self.npz_keys)
 
         # Extract TIC ID and sector from filename
-        tic_id, _ = self._parse_filename(file)
+        tic_id, _ = parse_filename(file)
+        if tic_id is None:
+            raise ValueError(f"Failed to parse TIC ID and sector from filename '{file}'")
 
         # Get eclipse parameters from catalogue
         row = get_row(self.catalogue, tic_id)
@@ -338,13 +260,13 @@ class EclipseMasker:
         """
         # Find all files for this TIC (both .txt and .npz)
         files = [f for f in os.listdir(self.data_dir)
-                 if (f.endswith('.txt') or f.endswith('.npz')) and f.split('_')[1] == str(tic_id)]
+                 if (f.endswith('.txt') or f.endswith('.npz')) and str(parse_filename(f)[0]) == str(tic_id)]
 
         if not files:
             raise FileNotFoundError(f"No files found for TIC {tic_id}")
 
         # Extract sectors from filenames
-        sectors = [self._parse_filename(f)[1] for f in files]
+        sectors = [parse_filename(f)[1] for f in files]
         sectors_str = ','.join(sorted(sectors, key=int))
 
         # Get period from catalogue
@@ -356,11 +278,8 @@ class EclipseMasker:
         for file in files:
             file_path = os.path.join(self.data_dir, file)
 
-            # Load data based on file format
-            if file.endswith('.npz'):
-                time, flux, flux_err, phase, eclipse_mask = self._load_npz(file_path)
-            else:
-                time, flux, flux_err, phase, eclipse_mask = self._load_txt(file_path)
+            time, flux, flux_err, phase, eclipse_mask = load_light_curve(
+                file_path, npz_keys=self.npz_keys)
 
             # Calculate phase from ephemeris if not provided
             if phase is None:

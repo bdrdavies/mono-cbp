@@ -8,7 +8,8 @@ import warnings
 import matplotlib.pyplot as plt
 from ..utils import (
     bin_to_long_cadence, get_var_mad, monofind, split_tol,
-    time_to_phase, get_eclipse_mask, get_snr
+    time_to_phase, get_eclipse_mask, get_snr,
+    parse_filename, load_light_curve
 )
 from ..utils.detrending import detrend
 from ..utils.plotting import plot_no_events, plot_event
@@ -182,13 +183,17 @@ class TransitFinder:
         self.stats['total_files'] = len(files)
         logger.info(f"Found {len(files)} files to process")
 
-        # Process each file
+        # Process each file, skipping any that fail so one bad file
+        # cannot abort a full run
         for i, file in enumerate(files):
             if i % PROGRESS_INTERVAL == 0:
                 logger.info(f"Progress: {i}/{len(files)}")
 
             file_path = os.path.join(data_dir, file)
-            self.process_file(file_path, plot_output_dir=plot_output_dir)
+            try:
+                self.process_file(file_path, plot_output_dir=plot_output_dir)
+            except Exception as e:
+                logger.error(f"Skipping {file}: {e}")
 
         # Calculate Skye metric
         if self.sector_times is not None:
@@ -204,51 +209,6 @@ class TransitFinder:
         logger.info(f"  Cosine detrending successes: {self.stats['cosine_successes']}/{self.stats['total_files']}")
 
         return results_df
-
-    def _load_npz(self, file_path):
-        """Load light curve data from npz file.
-
-        Args:
-            file_path (str): Path to npz file
-
-        Returns:
-            tuple: (time, flux, flux_err, phase, ecl_mask) where:
-                - time: np.ndarray of time values
-                - flux: np.ndarray of flux values
-                - flux_err: np.ndarray of flux error values
-                - phase: np.ndarray of binary phase values or None if not present in file
-                - ecl_mask: np.ndarray (bool) of eclipse mask or None if not present in file
-        """
-        data = np.load(file_path)
-        time = data[self.npz_keys['time']]
-        flux = data[self.npz_keys['flux']]
-        flux_err = data[self.npz_keys['flux_err']]
-        phase = data.get('phase', None)
-        ecl_mask_raw = data.get('eclipse_mask', None)
-        ecl_mask = ecl_mask_raw.astype(bool) if ecl_mask_raw is not None else None
-        return time, flux, flux_err, phase, ecl_mask
-
-    def _load_txt(self, file_path):
-        """Load light curve data from txt file.
-
-        Args:
-            file_path (str): Path to txt file
-
-        Returns:
-            tuple: (time, flux, flux_err, phase, ecl_mask) where:
-                - time: np.ndarray of time values
-                - flux: np.ndarray of flux values
-                - flux_err: np.ndarray of flux error values
-                - phase: np.ndarray of binary phase values
-                - ecl_mask: np.ndarray (bool) of eclipse mask or None if not present in file
-        """
-        data = np.loadtxt(file_path, skiprows=1)
-        time = data[:, 0]
-        flux = data[:, 1]
-        flux_err = data[:, 2]
-        phase = data[:, 3]
-        ecl_mask = data[:, 4].astype(bool) if data.shape[1] > 4 else None
-        return time, flux, flux_err, phase, ecl_mask
 
     def process_file(self, file_path, plot_output_dir=None):
         """Process a single light curve file.
@@ -266,20 +226,17 @@ class TransitFinder:
         file = os.path.basename(file_path)
         split_file = os.path.splitext(file)
 
-        # Load file data
-        if split_file[1] == '.npz':
-            time, flux, flux_err, phase, ecl_mask = self._load_npz(file_path)
-        elif split_file[1] == '.txt':
-            time, flux, flux_err, phase, ecl_mask = self._load_txt(file_path)
-        else:
-            logger.warning(f"Unsupported file format: {file}")
-            return []
-
         # Extract TIC and sector
-        tic, sector = self._parse_filename(file)
+        tic, sector = parse_filename(file)
         if tic is None:
             logger.warning(f"Could not parse TIC/sector from {file}, skipping")
             return []
+
+        # Load file data
+        if split_file[1] not in ('.npz', '.txt'):
+            logger.warning(f"Unsupported file format: {file}")
+            return []
+        time, flux, flux_err, phase, ecl_mask = load_light_curve(file_path, npz_keys=self.npz_keys)
 
         # Get eclipse parameters
         prim_pos, prim_width, sec_pos, sec_width = self._get_eclipse_params(tic)
@@ -293,6 +250,9 @@ class TransitFinder:
         # Bin to long cadence if needed
         if np.median(np.gradient(valid_time)) < self.transit_config['cadence_minutes'] * MINUTES_TO_DAYS:
             time, flux, flux_err = bin_to_long_cadence(time, flux, flux_err)
+            # Binning changes the array length, so phase/ecl_mask must be
+            # recomputed from the catalogue ephemeris or dropped entirely
+            phase, ecl_mask = None, None
             if self.catalogue is not None:
                 row = self.catalogue[self.catalogue['tess_id'] == tic]
                 if not row.empty:
@@ -301,6 +261,17 @@ class TransitFinder:
                         eclipse_mask_p = get_eclipse_mask(phase, prim_pos, prim_width)
                         eclipse_mask_s = get_eclipse_mask(phase, sec_pos, sec_width)
                         ecl_mask = np.logical_or(eclipse_mask_p, eclipse_mask_s)
+
+        # Guard against phase/mask arrays that do not match the time array
+        # (e.g. stale columns in an input file)
+        if ecl_mask is not None and len(ecl_mask) != len(time):
+            logger.warning(f"{file}: eclipse mask length ({len(ecl_mask)}) does not match "
+                           f"time array ({len(time)}), ignoring eclipse mask")
+            ecl_mask = None
+        if phase is not None and len(phase) != len(time):
+            logger.warning(f"{file}: phase length ({len(phase)}) does not match "
+                           f"time array ({len(time)}), ignoring phase")
+            phase = None
 
         # Create mask
         nan_mask = ~np.isnan(flux * time * flux_err)
@@ -661,31 +632,6 @@ class TransitFinder:
 
         return (row['prim_pos'].values[0], row['prim_width'].values[0],
                 row['sec_pos'].values[0], row['sec_width'].values[0])
-
-    def _parse_filename(self, filename):
-        """Parse TIC ID and sector number from filename.
-
-        Expected filename format: TIC_<TICID>_<SECTOR>.<EXT>
-        Sector should be 2 digits (e.g., 02 or 10) but returned without leading zeros.
-
-        Args:
-            filename (str): Filename to parse
-
-        Returns:
-            tuple: (tic_id, sector) where tic_id is int and sector is str without leading zeros
-
-        Raises:
-            ValueError: If filename format is invalid
-        """
-        try:
-            parts = filename.split('_')
-            tic_id = int(parts[1])
-            sector_part = parts[2].split('.')[0]
-            sector_num = int(sector_part)  # Convert to int to remove leading zero
-            sector = str(sector_num)
-            return tic_id, sector
-        except (ValueError, IndexError) as e:
-            raise ValueError(f"Failed to parse TIC ID and sector from filename '{filename}': {e}")
 
     def _calculate_skye_metric(self, plot_output_dir=None):
         """Calculate Skye metric to flag systematic artifacts.

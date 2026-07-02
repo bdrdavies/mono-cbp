@@ -14,7 +14,7 @@ from matplotlib.patheffects import withStroke
 from ..utils import (
     bin_to_long_cadence, get_var_mad, monofind,
     time_to_phase, get_eclipse_mask, get_snr,
-    load_transit_models
+    load_transit_models, parse_filename, load_light_curve
 )
 from ..utils.detrending import detrend
 from ..config import get_default_config, merge_config
@@ -150,14 +150,18 @@ class TransitInjector:
                 logger.info(f"  Sampling {n_injections} files without replacement from {len(all_files)} available")
                 selected_files = np.random.choice(all_files, size=n_injections, replace=False)
 
-            # Process each file with this model
+            # Process each file with this model, skipping any that fail so one
+            # bad file cannot abort a full injection-retrieval run
             for file in selected_files:
                 test_count += 1
                 if test_count % 50 == 0:
                     logger.info(f"  Progress: {test_count}/{total_tests} total tests")
 
                 file_path = os.path.join(data_dir, file)
-                self.process_file(file_path, flux_model, depth_model, duration_model)
+                try:
+                    self.process_file(file_path, flux_model, depth_model, duration_model)
+                except Exception as e:
+                    logger.error(f"Skipping {file}: {e}")
 
             # Calculate and store statistics
             model_end_idx = len(self.results['recovered'])
@@ -203,33 +207,25 @@ class TransitInjector:
         file = os.path.basename(file_path)
         split_file = os.path.splitext(file)
 
-        if split_file[1] == '.npz':
-            # Load from npz
-            data = np.load(file_path, allow_pickle=True)
-            time = data[self.npz_keys['time']]
-            flux = data[self.npz_keys['flux']]
-            flux_err = data[self.npz_keys['flux_err']]
-            phase = data.get('phase', None)
-            ecl_mask_raw = data.get('eclipse_mask', None)
-            ecl_mask = ecl_mask_raw.astype(bool) if ecl_mask_raw is not None else None
-        elif split_file[1] == '.txt':
-            # Load from txt
-            data = np.loadtxt(file_path, skiprows=1)
-            time, flux, flux_err, phase = data[:, 0], data[:, 1], data[:, 2], data[:, 3]
-            ecl_mask = data[:, 4].astype(bool) if data.shape[1] > 4 else None
-        else:
-            logger.warning(f"Unsupported file format: {file}")
-            return
-
         # Extract TIC and sector
-        tic, sector = self._parse_filename(file)
+        tic, sector = parse_filename(file)
         if tic is None:
             logger.warning(f"Could not parse TIC/sector from {file}, skipping")
             return
+        sector = int(sector)
+
+        # Load file data
+        if split_file[1] not in ('.npz', '.txt'):
+            logger.warning(f"Unsupported file format: {file}")
+            return
+        time, flux, flux_err, phase, ecl_mask = load_light_curve(file_path, npz_keys=self.npz_keys)
 
         # Bin to 30-minute cadence if needed
         if np.median(np.gradient(time[~np.isnan(flux)])) < self.transit_config['cadence_minutes'] / (60 * 24):
             time, flux, flux_err = bin_to_long_cadence(time, flux, flux_err)
+            # Binning changes the array length, so phase/ecl_mask must be
+            # recomputed from the catalogue ephemeris or dropped entirely
+            phase, ecl_mask = None, None
             if self.catalogue is not None:
                 row = self.catalogue[self.catalogue['tess_id'] == tic]
                 if not row.empty:
@@ -237,6 +233,12 @@ class TransitInjector:
                     prim_mask = get_eclipse_mask(phase, row['prim_pos'].values[0], row['prim_width'].values[0])
                     sec_mask = get_eclipse_mask(phase, row['sec_pos'].values[0], row['sec_width'].values[0])
                     ecl_mask = np.logical_or(prim_mask, sec_mask)
+
+        # Guard against phase/mask arrays that do not match the time array
+        if ecl_mask is not None and len(ecl_mask) != len(time):
+            logger.warning(f"{file}: eclipse mask length ({len(ecl_mask)}) does not match "
+                           f"time array ({len(time)}), ignoring eclipse mask")
+            ecl_mask = None
 
         # Create mask
         # Exclude NaN values and eclipse regions
@@ -580,17 +582,6 @@ class TransitInjector:
         flux_inj[injection_start:injection_start + min_length] += model[:min_length]
 
         return flux_inj, actual_inj_time
-
-    def _parse_filename(self, filename):
-        """Parse TIC and sector from filename."""
-        try:
-            parts = filename.split('_')
-            tic = int(parts[1])
-            sector_str = parts[2].replace('.npz', '').replace('.txt', '')
-            sector = int(sector_str.lstrip('S').lstrip('0') or '0')
-            return tic, sector
-        except (IndexError, ValueError):
-            return None, None
 
     def save_results(self, output_file='inj-ret_results.csv', output_dir='.'):
         """Save injection-retrieval results.
