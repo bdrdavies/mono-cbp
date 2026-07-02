@@ -87,7 +87,7 @@ def plot_no_events(
         else:
             save_dir = os.path.join(os.getcwd(), 'output_plots', 'no_events')
             os.makedirs(save_dir, exist_ok=True)
-        plot_path = os.path.join(save_dir, fname[:-3]+'_'+fname[-2:]+'.png')
+        plot_path = os.path.join(save_dir, f"{fname}.png")
         fig.savefig(plot_path, dpi=300, bbox_inches='tight')
         logger.info(f"Saved no-events plot to {plot_path}")
         plt.close(fig)
@@ -239,7 +239,7 @@ def plot_event(
         else:
             save_dir = os.path.join(os.getcwd(), 'output_plots', 'events')
             os.makedirs(save_dir, exist_ok=True)
-        plot_path = os.path.join(save_dir, fname[:-3]+'_'+fname[-2:]+'_'+str(event_no)+'.png')
+        plot_path = os.path.join(save_dir, f"{fname}_{event_no}.png")
         fig.savefig(plot_path, dpi=300, bbox_inches='tight')
         logger.info(f"Saved event plot to {plot_path}")
         plt.close(fig)
